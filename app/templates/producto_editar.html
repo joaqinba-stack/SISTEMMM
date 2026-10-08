@@ -9,6 +9,7 @@
     <div>Código: <b class="mono">{{ p.codigo }}</b></div>
     <div>SKU: <b class="mono">{{ p.sku }}</b></div>
     <div>Código de barra:<br><img class="barra-img" src="/barra/{{ p.codigo_barra }}.svg" alt="{{ p.codigo_barra }}"></div>
+    <div><a class="boton chico" href="/etiquetas?ids={{ p.id }}">🏷️ Imprimir etiquetas de este producto</a></div>
     <div>En stock: <b>{{ p.stock|cant }}</b> · Costo de la última compra: <b>{{ p.costo_ultimo|gs }}</b></div>
   </div>
 </div>

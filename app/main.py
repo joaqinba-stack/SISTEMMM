@@ -366,6 +366,44 @@ def ventas_excel():
         return excel(exportar.ventas(con), "ventas")
 
 
+# ---------------------------------------------------------------- etiquetas con código de barra
+
+MAX_ETIQUETAS = 1000
+
+
+@app.get("/etiquetas", response_class=HTMLResponse)
+def etiquetas(request: Request, ids: str = ""):
+    elegidos = {int(i) for i in ids.split(",") if i.strip().isdigit()}
+    with db.conexion() as con:
+        productos = inv.listar_productos(con, solo_activos=True)
+    return pagina(request, "etiquetas.html", productos=productos, elegidos=elegidos)
+
+
+@app.get("/etiquetas/hoja", response_class=HTMLResponse)
+def etiquetas_hoja(request: Request):
+    copias = {}
+    for clave, valor in request.query_params.items():
+        if clave.startswith("c_") and clave[2:].isdigit():
+            n = int(inv.leer_numero(valor, 0) or 0)
+            if n > 0:
+                copias[int(clave[2:])] = n
+    if not copias:
+        avisar(request, "Poné cuántas etiquetas querés en al menos un producto.", "error")
+        return ir("/etiquetas")
+    if sum(copias.values()) > MAX_ETIQUETAS:
+        avisar(request, f"Son demasiadas etiquetas. El máximo es {MAX_ETIQUETAS} por vez.", "error")
+        return ir("/etiquetas")
+    with db.conexion() as con:
+        lista = []
+        for producto_id, n in copias.items():
+            p = inv.obtener_producto(con, producto_id)
+            if p:
+                lista.extend([p] * n)
+    return pagina(request, "etiquetas_hoja.html", etiquetas=lista,
+                  con_precio=request.query_params.get("precio") == "1",
+                  hojas=-(-len(lista) // 21))
+
+
 # ---------------------------------------------------------------- datos auxiliares
 
 @app.get("/api/stock")
@@ -386,7 +424,13 @@ def _svg_barra(codigo: str) -> bytes:
         "module_height": 10, "module_width": 0.25, "font_size": 7, "text_distance": 3.5,
         "quiet_zone": 2, "compress": False,
     })
-    return salida.getvalue()
+    svg = salida.getvalue().decode("utf-8")
+    # Se agrega viewBox para que el código se pueda agrandar o achicar sin cortarse (etiquetas).
+    medidas = re.search(r'width="([\d.]+)mm" height="([\d.]+)mm"', svg)
+    if medidas:
+        ancho, alto = (float(v) * 3.7795 for v in medidas.groups())
+        svg = svg.replace(medidas.group(0), f'{medidas.group(0)} viewBox="0 0 {ancho:.2f} {alto:.2f}"', 1)
+    return svg.encode("utf-8")
 
 
 @app.get("/barra/{codigo}.svg")

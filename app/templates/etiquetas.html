@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block titulo %}Imprimir códigos de barra{% endblock %}
+{% block contenido %}
+<h1>🏷️ Imprimir códigos de barra</h1>
+<p class="ayuda">Escribí cuántas etiquetas querés de cada producto y tocá <b>Ver etiquetas</b>.
+  Salen en una hoja A4 de 21 etiquetas (también se puede usar papel común y recortar).</p>
+
+<form method="get" action="/etiquetas/hoja" class="formulario ancho" data-etiquetas>
+  <div class="botones">
+    <button class="boton" type="button" data-copias="stock">📦 Una por cada unidad en stock</button>
+    <button class="boton" type="button" data-copias="1">1️⃣ Una de cada producto</button>
+    <button class="boton" type="button" data-copias="0">0️⃣ Poner todo en cero</button>
+  </div>
+
+  <div class="filtros">
+    <input type="search" placeholder="🔎 Buscar producto…" data-buscar="#tabla-etiquetas">
+  </div>
+
+  <div class="tabla-envoltura">
+  <table class="tabla" id="tabla-etiquetas">
+    <thead><tr><th>Producto</th><th>Código</th><th class="num">En stock</th><th class="num">¿Cuántas etiquetas?</th></tr></thead>
+    <tbody>
+    {% for p in productos %}
+      <tr>
+        <td data-titulo="Producto"><b>{{ p.nombre_interno }}</b></td>
+        <td data-titulo="Código" class="mono">{{ p.codigo_barra }}</td>
+        <td data-titulo="En stock" class="num">{{ p.stock|cant }}</td>
+        <td data-titulo="Etiquetas" class="num">
+          <input class="copias" type="number" min="0" max="500" inputmode="numeric"
+                 name="c_{{ p.id }}" value="{{ 1 if p.id in elegidos else 0 }}"
+                 data-stock="{{ p.stock|round|int if p.stock > 0 else 0 }}" aria-label="Etiquetas de {{ p.nombre_interno }}">
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">Todavía no hay productos activos.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <label class="casilla grande-casilla">
+    <input type="checkbox" name="precio" value="1" checked> Mostrar el precio en la etiqueta
+  </label>
+  <div class="calculado">Total: <b id="total-etiquetas">0</b> etiquetas</div>
+
+  <div class="botones">
+    <a class="boton grande" href="/productos">✖ Cancelar</a>
+    <button class="boton grande principal" type="submit">👀 Ver etiquetas</button>
+  </div>
+</form>
+{% endblock %}

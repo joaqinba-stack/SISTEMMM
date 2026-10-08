@@ -151,6 +151,28 @@
     });
   });
 
+  // Etiquetas: botones rápidos (solo afectan a los productos que se ven) y total.
+  document.querySelectorAll("form[data-etiquetas]").forEach(function (form) {
+    var campos = form.querySelectorAll("input.copias");
+    var total = form.querySelector("#total-etiquetas");
+    var sumar = function () {
+      var n = 0;
+      campos.forEach(function (c) { n += Math.max(0, parseInt(c.value, 10) || 0); });
+      total.textContent = miles(n);
+    };
+    form.querySelectorAll("[data-copias]").forEach(function (boton) {
+      boton.addEventListener("click", function () {
+        campos.forEach(function (c) {
+          if (c.closest("tr").classList.contains("oculto-busqueda")) return;
+          c.value = boton.dataset.copias === "stock" ? c.dataset.stock : boton.dataset.copias;
+        });
+        sumar();
+      });
+    });
+    campos.forEach(function (c) { c.addEventListener("input", sumar); });
+    sumar();
+  });
+
   // Pedir confirmación antes de acciones importantes.
   document.querySelectorAll("form[data-confirmar]").forEach(function (form) {
     form.addEventListener("submit", function (e) {

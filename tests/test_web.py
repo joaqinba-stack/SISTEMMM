@@ -62,3 +62,18 @@ def test_pide_clave(monkeypatch):
         r = c.post("/login", data={"clave": "1234"})
         assert r.url.path == "/"
         assert c.get("/productos").url.path == "/productos"
+
+
+def test_etiquetas_codigo_de_barra():
+    with cliente() as c:
+        c.post("/productos/nuevo", data={"nombre_interno": "Molde vela", "categoria_id": "1",
+                                         "proveedor": "Super K", "cantidad": "3",
+                                         "costo_total": "30000"})
+        r = c.get("/etiquetas?ids=1")
+        assert 'name="c_1" value="1"' in r.text and 'data-stock="3"' in r.text
+        r = c.get("/etiquetas/hoja?c_1=3&precio=1")
+        assert r.text.count('class="etiqueta-impresa"') == 3 and "₲ 14.000" in r.text
+        r = c.get("/etiquetas/hoja?c_1=0")
+        assert r.url.path == "/etiquetas" and "al menos un producto" in r.text
+        svg = c.get("/barra/20022001.svg").text
+        assert "viewBox=" in svg

@@ -180,3 +180,30 @@ input[readonly] { background: #f0eee9; }
   .barra-img { height: 40px; }
   .miniatura, .sin-foto { width: 40px; height: 40px; }
 }
+
+/* ---- Etiquetas con código de barra (hoja A4 de 3 x 7 = 21 etiquetas de 63,5 x 38,1 mm) ---- */
+.formulario.ancho { max-width: 1000px; }
+.copias { max-width: 120px; margin-left: auto; text-align: center; font-size: 1.1rem; font-weight: 700; }
+.hoja-etiquetas {
+  display: grid; grid-template-columns: repeat(3, 63.5mm); grid-auto-rows: 38.1mm;
+  column-gap: 2.5mm; justify-content: center; margin-top: 18px;
+}
+.etiqueta-impresa {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6mm;
+  padding: 2mm 3mm; overflow: hidden; background: #fff; border: 1px dashed #bbb;
+  break-inside: avoid; page-break-inside: avoid; text-align: center; color: #000;
+}
+.etiqueta-nombre {
+  font-size: 8.5pt; font-weight: 700; line-height: 1.15; max-height: 2.3em; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.etiqueta-barra { height: 15mm; max-width: 100%; display: block; }
+.etiqueta-precio { font-size: 12pt; font-weight: 800; line-height: 1; }
+.etiqueta-codigo { font-size: 6.5pt; color: #333; white-space: nowrap; }
+@media screen and (max-width: 760px) {
+  .hoja-etiquetas { grid-template-columns: repeat(auto-fill, 63.5mm); }
+}
+@media print {
+  .hoja-etiquetas { margin: 0; }
+  .etiqueta-impresa { border: 0; }
+}
