@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar al inventario</title>
+  <link rel="stylesheet" href="/static/estilo.css?v=3">
+</head>
+<body>
+  <main class="contenido angosto">
+    <h1>📦 Inventario</h1>
+    {% for tipo, texto in avisos %}
+      <div class="aviso aviso-{{ tipo }}" role="alert">{{ texto }}</div>
+    {% endfor %}
+    <form method="post" action="/login" class="formulario">
+      <label>Escribí la clave para entrar
+        <input type="password" name="clave" autofocus autocomplete="current-password">
+      </label>
+      <div class="botones"><button class="boton grande principal" type="submit">Entrar</button></div>
+    </form>
+  </main>
+</body>
+</html>

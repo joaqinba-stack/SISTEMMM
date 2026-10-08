@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titulo %}Editar compra{% endblock %}
+{% block contenido %}
+<h1>✏️ Editar compra</h1>
+<div class="tarjeta">
+  <div>Producto: <b>{{ c.nombre_interno }}</b> <span class="mono suave">({{ c.codigo }})</span></div>
+  {% if c.cantidad_restante < c.cantidad %}
+    <div class="suave">De esta compra ya se vendieron {{ (c.cantidad - c.cantidad_restante)|cant }}. Solo se pueden cambiar la fecha, la factura y el proveedor.</div>
+  {% endif %}
+  {% if c.foto_factura %}<div><a href="/archivo/{{ c.foto_factura }}" target="_blank">📷 Ver foto de la factura</a></div>{% endif %}
+</div>
+
+<form method="post" action="/compras/{{ c.lote_id }}/editar" class="formulario">
+  <div class="dos-columnas">
+    <label>Fecha
+      <input type="date" name="fecha" value="{{ c.fecha }}">
+    </label>
+    <label>N° de factura
+      <input name="nro_factura" value="{{ c.nro_factura }}">
+    </label>
+  </div>
+  <label>Proveedor
+    <input name="proveedor" list="lista-proveedores" value="{{ c.proveedor }}">
+    <datalist id="lista-proveedores">
+      {% for pr in proveedores %}<option value="{{ pr.nombre }}">{% endfor %}
+    </datalist>
+  </label>
+  {% set bloqueado = c.cantidad_restante < c.cantidad %}
+  <div class="dos-columnas">
+    <label>Cantidad
+      <input name="cantidad" inputmode="decimal" value="{{ c.cantidad|cant }}" {{ 'readonly' if bloqueado }}>
+    </label>
+    <label>Costo total
+      <input name="costo_total" inputmode="numeric" data-dinero value="{{ c.costo_total|round|int }}" {{ 'readonly' if bloqueado }}>
+    </label>
+  </div>
+  <p class="ayuda chica">La fecha, la factura y el proveedor cambian para toda la factura.</p>
+  <div class="botones">
+    <a class="boton grande" href="/compras">✖ Cancelar</a>
+    <button class="boton grande principal" type="submit">💾 Guardar</button>
+  </div>
+</form>
+
+{% if not bloqueado %}
+<form method="post" action="/compras/{{ c.lote_id }}/borrar" class="formulario"
+      data-confirmar="¿Seguro que querés borrar esta compra? El stock va a bajar.">
+  <button class="boton peligro" type="submit">🗑️ Borrar esta compra</button>
+</form>
+{% endif %}
+{% endblock %}

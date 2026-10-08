@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block titulo %}Productos y stock{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>📦 Productos y stock</h1>
+  <div class="botones no-imprimir">
+    <button class="boton" type="button" onclick="window.print()">🖨️ Imprimir</button>
+    <a class="boton" href="/productos/excel">📊 Pasar a Excel</a>
+    <a class="boton principal" href="/productos/nuevo">🏷️ Nuevo</a>
+  </div>
+</div>
+
+<div class="filtros no-imprimir">
+  <input type="search" placeholder="🔎 Buscar por nombre, código o proveedor…" data-buscar="#tabla-productos">
+  <label class="casilla"><input type="checkbox" data-mostrar-inactivos="#tabla-productos"> Mostrar inactivos</label>
+</div>
+
+<details class="tarjeta no-imprimir">
+  <summary>💲 Cambiar precios por porcentaje</summary>
+  <form method="post" action="/productos/precios" class="formulario en-linea"
+        data-confirmar="¿Seguro? Se van a cambiar los precios de venta de todos los productos elegidos.">
+    <label>Categoría
+      <select name="categoria_id">
+        <option value="">Todas</option>
+        {% for c in categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Ganancia %
+      <input name="margen_pct" inputmode="decimal" value="{{ margen|int }}" required>
+    </label>
+    <button class="boton principal" type="submit">Aplicar</button>
+  </form>
+  <p class="ayuda chica">Precio de venta = costo de la última compra + el porcentaje que elijas.</p>
+</details>
+
+<p class="suave chica no-imprimir">El stock se actualiza solo cada pocos segundos.</p>
+
+<div class="tabla-envoltura">
+<table class="tabla" id="tabla-productos">
+  <thead>
+    <tr>
+      <th>Imagen</th><th>SKU</th><th>Código</th><th>Código de barra</th>
+      <th>Nombre interno</th><th>Nombre proveedor</th><th>Proveedor</th>
+      <th class="num">Precio venta</th><th class="num">En stock</th><th>Activo</th>
+      <th class="no-imprimir">Editar</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in productos %}
+    <tr id="p{{ p.id }}" class="{{ 'inactivo' if not p.activo }}{{ ' revisar' if p.revisar }}">
+      <td data-titulo="Imagen">
+        {% if p.imagen %}<img class="miniatura" src="/archivo/{{ p.imagen }}" alt="" loading="lazy">{% else %}<span class="sin-foto">📷</span>{% endif %}
+      </td>
+      <td data-titulo="SKU" class="mono">{{ p.sku }}</td>
+      <td data-titulo="Código" class="mono">{{ p.codigo }}</td>
+      <td data-titulo="Código de barra"><img class="barra-img" src="/barra/{{ p.codigo_barra }}.svg" alt="{{ p.codigo_barra }}" loading="lazy"></td>
+      <td data-titulo="Nombre interno"><div><b>{{ p.nombre_interno }}</b>{% if p.revisar %} <span class="etiqueta">🆕 revisar</span>{% endif %}<div class="suave chica">{{ p.categoria }}</div></div></td>
+      <td data-titulo="Nombre proveedor">{{ p.nombre_proveedor }}</td>
+      <td data-titulo="Proveedor">{{ p.proveedor }}</td>
+      <td data-titulo="Precio venta" class="num">{{ p.precio_venta|gs }}</td>
+      <td data-titulo="En stock" class="num stock {{ 'rojo' if p.stock <= 0 }}" data-stock-id="{{ p.id }}">{{ p.stock|cant }}</td>
+      <td data-titulo="Activo">
+        <form method="post" action="/productos/{{ p.id }}/activo" class="no-imprimir">
+          <button class="interruptor {{ 'si' if p.activo else 'no' }}" type="submit"
+                  title="Tocá para cambiar">{{ 'Sí' if p.activo else 'No' }}</button>
+        </form>
+        <span class="solo-imprimir">{{ 'Sí' if p.activo else 'No' }}</span>
+      </td>
+      <td class="no-imprimir"><a class="boton chico" href="/productos/{{ p.id }}/editar">✏️ Editar</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="11">Todavía no hay productos. Tocá <a href="/productos/nuevo">🏷️ Nuevo</a> para cargar el primero.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

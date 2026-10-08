@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block titulo %}Nuevo producto{% endblock %}
+{% block contenido %}
+<h1>🏷️ Nuevo producto</h1>
+<p class="ayuda">Completá los datos. Los que tienen <span class="obligatorio">*</span> son obligatorios. El código del producto, el SKU y el código de barra <b>se crean solos</b>.</p>
+
+<form method="post" action="/productos/nuevo" enctype="multipart/form-data" class="formulario" data-calculo-precio>
+  <div class="dato-fijo">Código del producto: <b>{{ proximo_codigo }}</b> <span class="suave">(automático)</span></div>
+
+  <fieldset>
+    <legend>El producto</legend>
+    <label>Nombre del producto (como lo llamamos nosotros) <span class="obligatorio">*</span>
+      <input name="nombre_interno" required autofocus placeholder="Ej: Molde vela rosa mediano">
+    </label>
+    <label>Marca
+      <input name="marca" placeholder="Ej: Super K">
+    </label>
+    <label>Categoría <span class="obligatorio">*</span>
+      <select name="categoria_id" required>
+        {% for c in categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Foto del producto
+      <input type="file" name="imagen" accept="image/*">
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>La compra</legend>
+    <label>Nombre del proveedor <span class="obligatorio">*</span>
+      <input name="proveedor" list="lista-proveedores" required placeholder="Ej: Pacific">
+      <datalist id="lista-proveedores">
+        {% for p in proveedores %}<option value="{{ p.nombre }}">{% endfor %}
+      </datalist>
+    </label>
+    <label>Nombre del producto en la factura del proveedor
+      <input name="nombre_proveedor" placeholder="Como aparece en la factura">
+    </label>
+    <div class="dos-columnas">
+      <label>Fecha de compra
+        <input type="date" name="fecha" value="{{ hoy }}">
+      </label>
+      <label>N° de factura
+        <input name="nro_factura" placeholder="001-001-0000000">
+      </label>
+    </div>
+    <div class="dos-columnas">
+      <label>Cantidad comprada <span class="obligatorio">*</span>
+        <input name="cantidad" id="cantidad" inputmode="decimal" required placeholder="Ej: 10">
+      </label>
+      <label>Costo total (lo que se pagó) <span class="obligatorio">*</span>
+        <input name="costo_total" id="costo_total" inputmode="numeric" data-dinero required placeholder="Ej: 225.000">
+      </label>
+    </div>
+    <div class="calculado">Precio por unidad: <b id="precio_unitario">—</b> <span class="suave">(se calcula solo)</span></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Precio de venta</legend>
+    <div class="dos-columnas">
+      <label>Ganancia %
+        <input name="margen_pct" id="margen_pct" inputmode="decimal" value="{{ margen|int }}">
+      </label>
+      <label>Precio de venta sugerido (se puede cambiar)
+        <input name="precio_venta" id="precio_venta" inputmode="numeric" data-dinero placeholder="Se calcula solo">
+      </label>
+    </div>
+    <p class="ayuda chica">El precio se calcula solo: precio por unidad + {{ margen|int }}%. Si querés otro, escribilo y el % se ajusta.</p>
+  </fieldset>
+
+  <div class="botones">
+    <a class="boton grande" href="/">✖ Cancelar</a>
+    <button class="boton grande principal" type="submit">💾 Guardar</button>
+  </div>
+</form>
+{% endblock %}
