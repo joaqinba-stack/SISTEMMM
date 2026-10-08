@@ -1,5 +1,6 @@
 """Aplicación web del inventario (FastAPI)."""
 import io
+import json
 import logging
 import re
 import uuid
@@ -16,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import codigos, config, db, exportar, inventario as inv
+from app import codigos, config, db, etiquetas_pdf, exportar, inventario as inv
 
 log = logging.getLogger(__name__)
 CARPETA = config.RAIZ / "app"
@@ -76,10 +77,28 @@ def avisar(request: Request, texto: str, tipo: str = "ok") -> None:
 
 def pagina(request: Request, nombre: str, **contexto) -> HTMLResponse:
     avisos = request.session.pop("avisos", [])
+    with db.conexion() as con:
+        pendientes = inv.notificaciones(con)
+    cantidad = len({p["id"] for lista in pendientes.values() for p in lista})
     return plantillas.TemplateResponse(
         request, nombre,
-        {"avisos": avisos, "con_clave": bool(config.CLAVE_ACCESO), **contexto},
+        {"avisos": avisos, "con_clave": bool(config.CLAVE_ACCESO),
+         "cantidad_avisos": cantidad, **contexto},
     )
+
+
+def json_para_html(datos) -> str:
+    """JSON seguro para poner dentro de <script type="application/json">."""
+    return json.dumps(datos, ensure_ascii=False).replace("</", "<\\/")
+
+
+def opciones_productos(productos) -> str:
+    return json_para_html([
+        {"id": p["id"], "texto": p["nombre_interno"],
+         "detalle": f"{p['codigo']} · {inv.guaranies(p['precio_venta'])} · hay {inv.cantidad_txt(p['stock'])}",
+         "buscar": f"{p['codigo']} {p['sku']} {p['codigo_barra']}",
+         "precio": p["precio_venta"], "stock": p["stock"]}
+        for p in productos])
 
 
 def ir(url: str) -> RedirectResponse:
@@ -134,16 +153,13 @@ def salir(request: Request):
     return ir("/login")
 
 
-# ---------------------------------------------------------------- inicio
+# ---------------------------------------------------------------- notificaciones
 
 @app.get("/", response_class=HTMLResponse)
-def inicio(request: Request):
+def notificaciones(request: Request):
     with db.conexion() as con:
-        productos = inv.listar_productos(con, solo_activos=True)
-    revisar = [p for p in productos if p["revisar"]]
-    poco_stock = [p for p in productos if p["stock"] <= config.STOCK_BAJO]
-    return pagina(request, "inicio.html", total=len(productos), revisar=revisar,
-                  poco_stock=poco_stock, telegram=bool(config.TELEGRAM_TOKEN))
+        pendientes = inv.notificaciones(con)
+    return pagina(request, "notificaciones.html", stock_bajo=config.STOCK_BAJO, **pendientes)
 
 
 # ---------------------------------------------------------------- productos
@@ -195,16 +211,17 @@ def productos_excel():
         return excel(exportar.productos(con), "productos")
 
 
-@app.post("/productos/precios")
-def productos_precios(request: Request, margen_pct: str = Form(""), categoria_id: str = Form("")):
+@app.post("/productos/{producto_id}/margen")
+def producto_margen(request: Request, producto_id: int, margen_pct: str = Form("")):
     try:
         with db.conexion() as con:
-            n = inv.aplicar_porcentaje(con, inv.leer_numero(margen_pct), categoria_id or None)
+            precio = inv.fijar_margen(con, producto_id, margen_pct)
+            nombre = inv.obtener_producto(con, producto_id)["nombre_interno"]
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
-        return ir("/productos")
-    avisar(request, f"✅ Se cambió el precio de {n} producto(s) a costo + {margen_pct}%.")
-    return ir("/productos")
+        return ir(f"/productos#p{producto_id}")
+    avisar(request, f"✅ {nombre}: ganancia {margen_pct}%, nuevo precio {inv.guaranies(precio)}.")
+    return ir(f"/productos#p{producto_id}")
 
 
 @app.get("/productos/{producto_id}/editar", response_class=HTMLResponse)
@@ -257,39 +274,45 @@ def compras(request: Request):
         return pagina(request, "compras.html", compras=inv.listar_compras(con))
 
 
+def _filtros_compras(request: Request) -> dict:
+    q = request.query_params
+    return {
+        "proveedor_id": q.get("proveedor_id", "").strip() if q.get("proveedor_id", "").isdigit() else "",
+        "producto_id": q.get("producto_id", "").strip() if q.get("producto_id", "").isdigit() else "",
+        "desde": q.get("desde", "").strip(),
+        "hasta": q.get("hasta", "").strip(),
+    }
+
+
 @app.get("/compras/excel")
-def compras_excel():
+def compras_excel(request: Request):
     with db.conexion() as con:
-        return excel(exportar.compras(con), "compras")
+        return excel(exportar.compras(con, _filtros_compras(request)), "compras")
 
 
-@app.get("/compras/nueva", response_class=HTMLResponse)
-def compra_nueva(request: Request):
+@app.get("/compras/panel", response_class=HTMLResponse)
+def compras_panel(request: Request):
+    filtros = _filtros_compras(request)
     with db.conexion() as con:
-        return pagina(request, "compra_nueva.html", productos=inv.listar_productos(con),
-                      proveedores=inv.proveedores(con), hoy=date.today().isoformat())
-
-
-@app.post("/compras/nueva")
-def compra_nueva_guardar(
-    request: Request, producto_id: int = Form(...), fecha: str = Form(""),
-    nro_factura: str = Form(""), proveedor: str = Form(""), cantidad: str = Form("0"),
-    costo_total: str = Form("0"), precio_venta: str = Form(""),
-):
-    try:
-        with db.conexion() as con:
-            inv.registrar_compra(con, fecha, nro_factura, proveedor,
-                                 [{"producto_id": producto_id, "cantidad": cantidad,
-                                   "costo_total": costo_total}])
-            nuevo_precio = inv.leer_numero(precio_venta)
-            if nuevo_precio:
-                con.execute("UPDATE productos SET precio_venta = ? WHERE id = ?",
-                            (int(round(nuevo_precio)), producto_id))
-    except inv.ErrorNegocio as exc:
-        avisar(request, str(exc), "error")
-        return ir("/compras/nueva")
-    avisar(request, "✅ Compra guardada. El stock ya se actualizó.")
-    return ir("/compras")
+        filas = inv.listar_compras(con, **filtros)
+        productos = inv.listar_productos(con)
+        proveedores = inv.proveedores(con)
+    por_proveedor: dict[str, float] = {}
+    por_mes: dict[str, float] = {}
+    for f in filas:
+        por_proveedor[f["proveedor"] or "Sin proveedor"] = por_proveedor.get(f["proveedor"] or "Sin proveedor", 0) + f["costo_total"]
+        por_mes[f["fecha"][:7]] = por_mes.get(f["fecha"][:7], 0) + f["costo_total"]
+    elegido = next((p for p in productos if str(p["id"]) == filtros["producto_id"]), None)
+    return pagina(
+        request, "compras_panel.html", filas=filas, filtros=filtros, proveedores=proveedores,
+        productos_json=opciones_productos(productos), producto_elegido=elegido,
+        total=sum(f["costo_total"] for f in filas),
+        facturas=len({f["compra_id"] for f in filas}),
+        unidades=sum(f["cantidad"] for f in filas),
+        por_proveedor=sorted(por_proveedor.items(), key=lambda x: -x[1]),
+        por_mes=sorted(por_mes.items()),
+        consulta=str(request.query_params),
+    )
 
 
 @app.get("/compras/{lote_id}/editar", response_class=HTMLResponse)
@@ -337,26 +360,40 @@ def compra_borrar(request: Request, lote_id: int):
 def vender(request: Request):
     with db.conexion() as con:
         productos = [p for p in inv.listar_productos(con, solo_activos=True) if p["stock"] > 0]
-        return pagina(request, "vender.html", productos=productos, medios=MEDIOS_PAGO,
-                      ventas=inv.listar_ventas(con, limite=20), hoy=date.today().isoformat())
+        clientes = inv.listar_clientes(con)
+        return pagina(
+            request, "vender.html", medios=MEDIOS_PAGO, hoy=date.today().isoformat(),
+            productos_json=opciones_productos(productos),
+            clientes_json=json_para_html([_cliente_opcion(c) for c in clientes]),
+            ventas=inv.ultimas_ventas(con, 20),
+        )
+
+
+def _cliente_opcion(c) -> dict:
+    detalle = " · ".join(x for x in (c["telefono"], c["documento"] and f"RUC/CI {c['documento']}") if x)
+    return {"id": c["id"], "texto": c["nombre"], "detalle": detalle,
+            "buscar": f"{c['telefono']} {c['documento']}"}
 
 
 @app.post("/vender")
-def vender_guardar(
-    request: Request, producto_id: int = Form(...), cantidad: str = Form("1"),
-    precio_unit: str = Form(""), cliente: str = Form(""), medio_pago: str = Form(""),
-    fecha: str = Form(""),
-):
+async def vender_guardar(request: Request):
+    formulario = await request.form()
+    ids = formulario.getlist("producto_id")
+    cantidades = formulario.getlist("cantidad")
+    cliente = formulario.get("cliente_id", "")
     try:
+        items = [{"producto_id": int(i), "cantidad": c} for i, c in zip(ids, cantidades)]
         with db.conexion() as con:
-            r = inv.registrar_venta(con, producto_id, cantidad, precio_unit, cliente,
-                                    medio_pago, fecha)
+            r = inv.registrar_venta(con, items, int(cliente) if str(cliente).isdigit() else None,
+                                    formulario.get("medio_pago", ""), formulario.get("fecha", ""))
+    except ValueError:
+        avisar(request, "Hay un producto mal elegido. Probá de nuevo.", "error")
+        return ir("/vender")
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/vender")
-    avisar(request, f"✅ Venta guardada: {r['producto']} por {inv.guaranies(r['total'])}. "
-                    f"Ganancia {inv.guaranies(r['ganancia'])}. "
-                    f"Quedan {inv.cantidad_txt(r['stock_restante'])}.")
+    avisar(request, f"✅ Venta guardada: {r['productos']} producto(s) por {inv.guaranies(r['total'])}. "
+                    f"Ganancia {inv.guaranies(r['ganancia'])}.")
     return ir("/vender")
 
 
@@ -366,42 +403,63 @@ def ventas_excel():
         return excel(exportar.ventas(con), "ventas")
 
 
+@app.post("/api/clientes")
+async def api_cliente_nuevo(request: Request):
+    datos = await request.json()
+    try:
+        with db.conexion() as con:
+            c = inv.crear_cliente(con, datos.get("nombre", ""), datos.get("telefono", ""),
+                                  datos.get("documento", ""))
+    except inv.ErrorNegocio as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(_cliente_opcion(c))
+
+
 # ---------------------------------------------------------------- etiquetas con código de barra
 
-MAX_ETIQUETAS = 1000
-
-
 @app.get("/etiquetas", response_class=HTMLResponse)
-def etiquetas(request: Request, ids: str = ""):
-    elegidos = {int(i) for i in ids.split(",") if i.strip().isdigit()}
+def etiquetas(request: Request, producto_id: str = ""):
     with db.conexion() as con:
         productos = inv.listar_productos(con, solo_activos=True)
-    return pagina(request, "etiquetas.html", productos=productos, elegidos=elegidos)
+        elegido = next((p for p in productos if str(p["id"]) == producto_id), None)
+        return pagina(request, "etiquetas.html", facturas=inv.listar_facturas(con),
+                      productos_json=opciones_productos(productos), elegido=elegido)
 
 
-@app.get("/etiquetas/hoja", response_class=HTMLResponse)
-def etiquetas_hoja(request: Request):
-    copias = {}
-    for clave, valor in request.query_params.items():
-        if clave.startswith("c_") and clave[2:].isdigit():
-            n = int(inv.leer_numero(valor, 0) or 0)
-            if n > 0:
-                copias[int(clave[2:])] = n
-    if not copias:
-        avisar(request, "Poné cuántas etiquetas querés en al menos un producto.", "error")
+def _pdf(contenido: bytes, nombre: str) -> Response:
+    nombre = re.sub(r"[^\w\-]+", "-", nombre).strip("-") or "etiquetas"
+    return Response(contenido, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="etiquetas-{nombre}.pdf"'})
+
+
+@app.get("/etiquetas/factura/{compra_id}.pdf")
+def etiquetas_factura(request: Request, compra_id: int):
+    try:
+        with db.conexion() as con:
+            lista, nombre = etiquetas_pdf.etiquetas_de_factura(con, compra_id)
+        return _pdf(etiquetas_pdf.hoja_pdf(lista, f"Etiquetas factura {nombre}"), nombre)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
         return ir("/etiquetas")
-    if sum(copias.values()) > MAX_ETIQUETAS:
-        avisar(request, f"Son demasiadas etiquetas. El máximo es {MAX_ETIQUETAS} por vez.", "error")
-        return ir("/etiquetas")
-    with db.conexion() as con:
-        lista = []
-        for producto_id, n in copias.items():
-            p = inv.obtener_producto(con, producto_id)
-            if p:
-                lista.extend([p] * n)
-    return pagina(request, "etiquetas_hoja.html", etiquetas=lista,
-                  con_precio=request.query_params.get("precio") == "1",
-                  hojas=-(-len(lista) // 21))
+
+
+@app.get("/etiquetas/producto.pdf")
+def etiquetas_producto(request: Request, producto_id: str = "", cantidad: str = "1",
+                       precio: str = ""):
+    try:
+        n = int(inv.leer_numero(cantidad, 0) or 0)
+        if n <= 0:
+            raise inv.ErrorNegocio("Escribí cuántas etiquetas querés (por ejemplo 10).")
+        with db.conexion() as con:
+            producto = inv.obtener_producto(con, int(producto_id)) if producto_id.isdigit() else None
+        if not producto:
+            raise inv.ErrorNegocio("Elegí el producto de la lista.")
+        contenido = etiquetas_pdf.hoja_pdf([producto] * n, f"Etiquetas {producto['nombre_interno']}",
+                                           con_precio=precio != "no")
+        return _pdf(contenido, producto["codigo"])
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir(f"/etiquetas?producto_id={producto_id}")
 
 
 # ---------------------------------------------------------------- datos auxiliares

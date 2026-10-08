@@ -46,13 +46,13 @@ def productos(con) -> bytes:
     return _libro("Productos", encabezados, filas, columnas_dinero=(9, 11))
 
 
-def compras(con) -> bytes:
+def compras(con, filtros: dict | None = None) -> bytes:
     encabezados = ["Fecha", "Código producto", "N° factura", "Proveedor", "Producto",
                    "Cantidad", "Precio unitario", "Precio total", "Queda en stock", "Origen"]
     filas = [[inv.fecha_txt(c["fecha"]), c["codigo"], c["nro_factura"], c["proveedor"],
               c["nombre_interno"], c["cantidad"], round(c["costo_unitario"]),
               round(c["costo_total"]), c["cantidad_restante"], c["origen"]]
-             for c in inv.listar_compras(con)]
+             for c in inv.listar_compras(con, **(filtros or {}))]
     return _libro("Compras", encabezados, filas, columnas_dinero=(7, 8))
 
 

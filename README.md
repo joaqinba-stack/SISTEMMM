@@ -7,20 +7,23 @@ Control de stock simple, pensado para que cualquiera lo pueda usar, con:
 - **Códigos automáticos**: código de producto (`P-00001`), **SKU** (`MOL-VEL-ROS-00001`) y
   **código de barra** por categoría (Vela `2002…`, Jabón `3003…`, Yeso `4004…`, Resina `5005…`, Varios `1001…`).
 - **FIFO**: cada venta descuenta primero lo que se compró antes, y calcula la ganancia real.
-- **Precios por porcentaje**: el precio de venta se sugiere con +40% (se puede cambiar), y se pueden
-  cambiar todos los precios de una categoría con un porcentaje.
-- **Imprimir** y **pasar a Excel** los productos, las compras y las ventas.
+- **Precios por porcentaje**: el precio de venta se sugiere con +40% y el % se cambia producto por
+  producto desde la tabla de productos.
+- **Ventas con varios productos** y **clientes** (se buscan por nombre, teléfono o RUC/CI, y se crean
+  desde la misma venta).
+- **Etiquetas con código de barra en PDF**: todas las de una factura (una por unidad) o las de un producto.
+- **Panel de compras** con filtros por proveedor, producto y fechas, y **pasar a Excel**.
 - El stock en pantalla **se actualiza solo** cada pocos segundos.
 
 ## Pantallas
 
 | Pantalla | Qué hace |
 |---|---|
-| 🏠 Inicio | Botones grandes, productos para revisar y productos con poco stock |
+| 🔔 Notificaciones | Productos con poco stock y productos nuevos para revisar. Queda vacía cuando todo está atendido |
 | 🏷️ Nuevo producto | Carga el producto y su primera compra. Calcula el precio por unidad y el precio de venta |
-| 📦 Productos y stock | SKU, código, código de barra, foto, nombres, proveedor, precio, stock, activo sí/no. Editar, imprimir, Excel, cambiar precios por % |
-| 🧾 Compras | Código, factura, proveedor, producto, precio unitario y total. Editar, imprimir, Excel, agregar compra |
-| 💰 Vender | Registra una venta y descuenta stock por FIFO |
+| 📦 Productos y stock | SKU, código, código de barra, foto, nombres, proveedor, % de ganancia por producto, precio, stock, activo sí/no. Editar, Excel, imprimir códigos de barra |
+| 🧾 Compras | Código, factura, proveedor, producto, precio unitario y total. Editar, imprimir, Excel y 📊 Panel de compras |
+| 💰 Vender | Uno o varios productos, cliente (buscar o crear) y forma de pago. Descuenta stock por FIFO |
 
 ## Instalación (una sola vez)
 

@@ -69,11 +69,21 @@ CREATE TABLE IF NOT EXISTS lotes (
     cantidad_restante REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS clientes (
+    id INTEGER PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    telefono TEXT NOT NULL DEFAULT '',
+    documento TEXT NOT NULL DEFAULT '',
+    clave TEXT NOT NULL UNIQUE,
+    creado TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS ventas (
     id INTEGER PRIMARY KEY,
     fecha TEXT NOT NULL,
     cliente TEXT NOT NULL DEFAULT '',
     medio_pago TEXT NOT NULL DEFAULT '',
+    cliente_id INTEGER REFERENCES clientes(id),
     creado TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -125,6 +135,10 @@ def conexion():
 def inicializar() -> None:
     with conexion() as con:
         con.executescript(ESQUEMA)
+        # Bases creadas antes de existir la tabla de clientes.
+        columnas = {fila[1] for fila in con.execute("PRAGMA table_info(ventas)")}
+        if "cliente_id" not in columnas:
+            con.execute("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)")
         for nombre, base in CATEGORIAS:
             con.execute(
                 "INSERT OR IGNORE INTO categorias (nombre, base_barra) VALUES (?, ?)",

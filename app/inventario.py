@@ -219,26 +219,21 @@ def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) 
     )
 
 
-def aplicar_porcentaje(con: sqlite3.Connection, margen_pct: float, categoria=None) -> int:
-    """Recalcula el precio de venta = costo de la última compra + margen %."""
+def fijar_margen(con: sqlite3.Connection, producto_id: int, margen_pct) -> int:
+    """Cambia el % de ganancia de un producto y recalcula su precio de venta."""
+    margen_pct = leer_numero(margen_pct)
     if margen_pct is None or margen_pct < 0:
         raise ErrorNegocio("Escribí un porcentaje válido (por ejemplo 40).")
-    sql = "SELECT id FROM productos WHERE activo = 1"
-    params: tuple = ()
-    if categoria:
-        sql += " AND categoria_id = ?"
-        params = (int(categoria),)
-    cambiados = 0
-    for (pid,) in con.execute(sql, params).fetchall():
-        costo = costo_referencia(con, pid)
-        if costo <= 0:
-            continue
-        con.execute(
-            "UPDATE productos SET margen_pct = ?, precio_venta = ? WHERE id = ?",
-            (margen_pct, precio_sugerido(costo, margen_pct), pid),
-        )
-        cambiados += 1
-    return cambiados
+    if not con.execute("SELECT 1 FROM productos WHERE id = ?", (producto_id,)).fetchone():
+        raise ErrorNegocio("Ese producto no existe.")
+    costo = costo_referencia(con, producto_id)
+    if costo <= 0:
+        raise ErrorNegocio("Este producto todavía no tiene costo de compra; "
+                           "cambiá el precio a mano en Editar.")
+    precio = precio_sugerido(costo, margen_pct)
+    con.execute("UPDATE productos SET margen_pct = ?, precio_venta = ? WHERE id = ?",
+                (margen_pct, precio, producto_id))
+    return precio
 
 
 def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int | None):
@@ -341,33 +336,60 @@ def borrar_lote(con, lote_id: int) -> None:
 
 # ---------------------------------------------------------------- ventas (FIFO)
 
-def registrar_venta(con, producto_id: int, cantidad, precio_unit, cliente="", medio_pago="",
-                    fecha=None) -> dict:
-    """Descuenta del lote más viejo primero (FIFO) y calcula costo y ganancia reales."""
-    cantidad = leer_numero(cantidad, 0) or 0
-    if cantidad <= 0:
-        raise ErrorNegocio("La cantidad vendida tiene que ser mayor a cero.")
-    producto = con.execute("SELECT * FROM productos WHERE id = ?", (producto_id,)).fetchone()
-    if not producto:
-        raise ErrorNegocio("Ese producto no existe.")
-    disponible = stock(con, producto_id)
-    if cantidad > disponible + 1e-9:
-        raise ErrorNegocio(
-            f"No alcanza el stock de «{producto['nombre_interno']}»: "
-            f"hay {cantidad_txt(disponible)} y se quieren vender {cantidad_txt(cantidad)}."
-        )
-    precio_unit = leer_numero(precio_unit, producto["precio_venta"])
+def registrar_venta(con, items, cliente_id=None, medio_pago="", fecha=None) -> dict:
+    """Guarda una venta con uno o más productos. El precio sale siempre de la ficha del
+    producto. Si a algún producto no le alcanza el stock no se guarda nada. Cada producto
+    descuenta del lote más viejo primero (FIFO) y se calcula el costo y la ganancia reales."""
+    pedidos: dict[int, float] = {}
+    for item in items or []:
+        cantidad = leer_numero(item.get("cantidad"), 0) or 0
+        if cantidad <= 0:
+            raise ErrorNegocio("La cantidad vendida tiene que ser mayor a cero.")
+        producto_id = int(item["producto_id"])
+        pedidos[producto_id] = round(pedidos.get(producto_id, 0) + cantidad, 6)
+    if not pedidos:
+        raise ErrorNegocio("Agregá al menos un producto a la venta.")
+    if cliente_id and not con.execute("SELECT 1 FROM clientes WHERE id = ?", (cliente_id,)).fetchone():
+        raise ErrorNegocio("Ese cliente no existe.")
+
+    productos = {}
+    for producto_id, cantidad in pedidos.items():
+        producto = con.execute("SELECT * FROM productos WHERE id = ?", (producto_id,)).fetchone()
+        if not producto:
+            raise ErrorNegocio("Uno de los productos no existe.")
+        disponible = stock(con, producto_id)
+        if cantidad > disponible + 1e-9:
+            raise ErrorNegocio(
+                f"No alcanza el stock de «{producto['nombre_interno']}»: "
+                f"hay {cantidad_txt(disponible)} y se quieren vender {cantidad_txt(cantidad)}."
+            )
+        productos[producto_id] = producto
 
     venta_id = con.execute(
-        "INSERT INTO ventas (fecha, cliente, medio_pago) VALUES (?, ?, ?)",
-        (leer_fecha(fecha), (cliente or "").strip(), medio_pago or ""),
+        "INSERT INTO ventas (fecha, cliente_id, medio_pago) VALUES (?, ?, ?)",
+        (leer_fecha(fecha), cliente_id or None, medio_pago or ""),
     ).lastrowid
+    total = costo_total = 0.0
+    for producto_id, cantidad in pedidos.items():
+        precio = productos[producto_id]["precio_venta"]
+        costo = _vender_item(con, venta_id, producto_id, cantidad, precio)
+        total += cantidad * precio
+        costo_total += costo
+    return {
+        "venta_id": venta_id,
+        "total": total,
+        "costo": costo_total,
+        "ganancia": total - costo_total,
+        "productos": len(pedidos),
+    }
+
+
+def _vender_item(con, venta_id: int, producto_id: int, cantidad: float, precio: float) -> float:
     item_id = con.execute(
         """INSERT INTO venta_items (venta_id, producto_id, cantidad, precio_unit, costo_fifo)
            VALUES (?, ?, ?, ?, 0)""",
-        (venta_id, producto_id, cantidad, precio_unit),
+        (venta_id, producto_id, cantidad, precio),
     ).lastrowid
-
     falta, costo = cantidad, 0.0
     lotes = con.execute(
         """SELECT id, cantidad_restante, costo_unitario FROM lotes
@@ -388,16 +410,52 @@ def registrar_venta(con, producto_id: int, cantidad, precio_unit, cliente="", me
         )
         costo += toma * lote["costo_unitario"]
         falta = round(falta - toma, 6)
-
     con.execute("UPDATE venta_items SET costo_fifo = ? WHERE id = ?", (costo, item_id))
-    total = cantidad * precio_unit
+    return costo
+
+
+# ---------------------------------------------------------------- clientes
+
+def _clave_cliente(nombre: str, documento: str) -> str:
+    return f"{normalizar(nombre)}|{re.sub(r'[^0-9a-z]', '', normalizar(documento))}"
+
+
+def crear_cliente(con, nombre: str, telefono: str = "", documento: str = "") -> dict:
+    """Crea el cliente, o devuelve el que ya existe con el mismo nombre y documento."""
+    nombre = re.sub(r"\s+", " ", nombre or "").strip()
+    if not nombre:
+        raise ErrorNegocio("Falta escribir el nombre del cliente.")
+    clave = _clave_cliente(nombre, documento)
+    fila = con.execute("SELECT * FROM clientes WHERE clave = ?", (clave,)).fetchone()
+    if not fila:
+        cliente_id = con.execute(
+            "INSERT INTO clientes (nombre, telefono, documento, clave) VALUES (?, ?, ?, ?)",
+            (nombre, (telefono or "").strip(), (documento or "").strip(), clave),
+        ).lastrowid
+        fila = con.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
+    return dict(fila)
+
+
+def listar_clientes(con):
+    return con.execute(
+        "SELECT id, nombre, telefono, documento FROM clientes ORDER BY nombre COLLATE NOCASE"
+    ).fetchall()
+
+
+def buscar_clientes(con, texto: str):
+    q = normalizar(texto)
+    return [c for c in listar_clientes(con)
+            if q in normalizar(f"{c['nombre']} {c['telefono']} {c['documento']}")]
+
+
+# ---------------------------------------------------------------- avisos
+
+def notificaciones(con) -> dict:
+    """Lo que hay que atender: productos con poco stock y productos nuevos sin revisar."""
+    activos = listar_productos(con, solo_activos=True)
     return {
-        "venta_id": venta_id,
-        "total": total,
-        "costo": costo,
-        "ganancia": total - costo,
-        "stock_restante": stock(con, producto_id),
-        "producto": producto["nombre_interno"],
+        "poco_stock": [p for p in activos if p["stock"] <= config.STOCK_BAJO],
+        "revisar": [p for p in activos if p["revisar"]],
     }
 
 
@@ -435,25 +493,68 @@ LEFT JOIN proveedores pr ON pr.id = c.proveedor_id
 """
 
 
-def listar_compras(con):
-    return con.execute(SQL_COMPRAS + " ORDER BY c.fecha DESC, c.id DESC, l.id").fetchall()
+def listar_compras(con, proveedor_id=None, producto_id=None, desde=None, hasta=None,
+                   compra_id=None):
+    condiciones, params = [], []
+    if proveedor_id:
+        condiciones.append("c.proveedor_id = ?"); params.append(int(proveedor_id))
+    if producto_id:
+        condiciones.append("l.producto_id = ?"); params.append(int(producto_id))
+    if desde:
+        condiciones.append("c.fecha >= ?"); params.append(leer_fecha(desde))
+    if hasta:
+        condiciones.append("c.fecha <= ?"); params.append(leer_fecha(hasta))
+    if compra_id:
+        condiciones.append("c.id = ?"); params.append(int(compra_id))
+    sql = SQL_COMPRAS + (" WHERE " + " AND ".join(condiciones) if condiciones else "")
+    return con.execute(sql + " ORDER BY c.fecha DESC, c.id DESC, l.id", params).fetchall()
+
+
+def listar_facturas(con):
+    """Una fila por compra (factura), para elegir de cuál imprimir etiquetas."""
+    return con.execute("""
+        SELECT c.id, c.fecha, c.nro_factura, c.origen, COALESCE(pr.nombre, '') AS proveedor,
+               COUNT(l.id) AS renglones, SUM(l.cantidad) AS unidades
+        FROM compras c
+        JOIN lotes l ON l.compra_id = c.id
+        LEFT JOIN proveedores pr ON pr.id = c.proveedor_id
+        GROUP BY c.id
+        ORDER BY c.fecha DESC, c.id DESC""").fetchall()
 
 
 def obtener_lote(con, lote_id: int):
     return con.execute(SQL_COMPRAS + " WHERE l.id = ?", (lote_id,)).fetchone()
 
 
-def listar_ventas(con, limite: int | None = None):
+def listar_ventas(con):
     sql = """
-    SELECT v.id, v.fecha, v.cliente, v.medio_pago, vi.cantidad, vi.precio_unit, vi.costo_fifo,
+    SELECT v.id, v.fecha, COALESCE(cl.nombre, v.cliente) AS cliente, v.medio_pago,
+           vi.cantidad, vi.precio_unit, vi.costo_fifo,
            vi.cantidad * vi.precio_unit AS total,
            vi.cantidad * vi.precio_unit - vi.costo_fifo AS ganancia,
            p.codigo, p.sku, p.nombre_interno
     FROM ventas v
     JOIN venta_items vi ON vi.venta_id = v.id
     JOIN productos p ON p.id = vi.producto_id
-    ORDER BY v.fecha DESC, v.id DESC
+    LEFT JOIN clientes cl ON cl.id = v.cliente_id
+    ORDER BY v.fecha DESC, v.id DESC, vi.id
     """
-    if limite:
-        sql += f" LIMIT {int(limite)}"
     return con.execute(sql).fetchall()
+
+
+def ultimas_ventas(con, limite: int = 20) -> list[dict]:
+    """Ventas agrupadas (una entrada por venta con sus productos), la más nueva primero."""
+    ventas: dict[int, dict] = {}
+    for fila in listar_ventas(con):
+        venta = ventas.get(fila["id"])
+        if venta is None:
+            if len(ventas) == limite:
+                break
+            venta = ventas[fila["id"]] = {
+                "id": fila["id"], "fecha": fila["fecha"], "cliente": fila["cliente"],
+                "medio_pago": fila["medio_pago"], "items": [], "total": 0.0, "ganancia": 0.0,
+            }
+        venta["items"].append(fila)
+        venta["total"] += fila["total"]
+        venta["ganancia"] += fila["ganancia"]
+    return list(ventas.values())

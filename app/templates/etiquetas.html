@@ -2,50 +2,54 @@
 {% block titulo %}Imprimir códigos de barra{% endblock %}
 {% block contenido %}
 <h1>🏷️ Imprimir códigos de barra</h1>
-<p class="ayuda">Escribí cuántas etiquetas querés de cada producto y tocá <b>Ver etiquetas</b>.
-  Salen en una hoja A4 de 21 etiquetas (también se puede usar papel común y recortar).</p>
+<p class="ayuda">Las etiquetas se descargan como PDF para imprimir en una hoja A4 de 21 etiquetas (también sirve papel común y recortar). Al imprimir, elegí <b>escala 100%</b>.</p>
 
-<form method="get" action="/etiquetas/hoja" class="formulario ancho" data-etiquetas>
-  <div class="botones">
-    <button class="boton" type="button" data-copias="stock">📦 Una por cada unidad en stock</button>
-    <button class="boton" type="button" data-copias="1">1️⃣ Una de cada producto</button>
-    <button class="boton" type="button" data-copias="0">0️⃣ Poner todo en cero</button>
-  </div>
+<div class="dos-opciones">
+  <section class="tarjeta opcion" id="factura">
+    <h2>🧾 Etiquetas de una factura</h2>
+    <p class="ayuda">Sale <b>una etiqueta por cada unidad</b> que vino en la factura, lista para pegar.</p>
+    <div class="filtros">
+      <input type="search" placeholder="🔎 Buscar factura, proveedor o fecha…" data-buscar="#tabla-facturas" aria-label="Buscar factura">
+    </div>
+    <div class="tabla-envoltura lista-facturas">
+      <table class="tabla" id="tabla-facturas">
+        <thead><tr><th>Fecha</th><th>Proveedor</th><th>N° factura</th><th class="num">Etiquetas</th><th></th></tr></thead>
+        <tbody>
+        {% for f in facturas %}
+          <tr>
+            <td data-titulo="Fecha">{{ f.fecha|fecha }}</td>
+            <td data-titulo="Proveedor">{{ f.proveedor or '—' }}{% if f.origen == 'telegram' %} <span class="etiqueta" title="Llegó por Telegram">📱</span>{% endif %}</td>
+            <td data-titulo="N° factura" class="mono">{{ f.nro_factura or '—' }}</td>
+            <td data-titulo="Etiquetas" class="num">{{ f.unidades|cant }} <span class="suave chica">({{ f.renglones }} producto{{ 's' if f.renglones != 1 }})</span></td>
+            <td><a class="boton chico principal" href="/etiquetas/factura/{{ f.id }}.pdf">⬇️ Descargar</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">Todavía no hay facturas cargadas.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-  <div class="filtros">
-    <input type="search" placeholder="🔎 Buscar producto…" data-buscar="#tabla-etiquetas">
-  </div>
-
-  <div class="tabla-envoltura">
-  <table class="tabla" id="tabla-etiquetas">
-    <thead><tr><th>Producto</th><th>Código</th><th class="num">En stock</th><th class="num">¿Cuántas etiquetas?</th></tr></thead>
-    <tbody>
-    {% for p in productos %}
-      <tr>
-        <td data-titulo="Producto"><b>{{ p.nombre_interno }}</b></td>
-        <td data-titulo="Código" class="mono">{{ p.codigo_barra }}</td>
-        <td data-titulo="En stock" class="num">{{ p.stock|cant }}</td>
-        <td data-titulo="Etiquetas" class="num">
-          <input class="copias" type="number" min="0" max="500" inputmode="numeric"
-                 name="c_{{ p.id }}" value="{{ 1 if p.id in elegidos else 0 }}"
-                 data-stock="{{ p.stock|round|int if p.stock > 0 else 0 }}" aria-label="Etiquetas de {{ p.nombre_interno }}">
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="4">Todavía no hay productos activos.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-
-  <label class="casilla grande-casilla">
-    <input type="checkbox" name="precio" value="1" checked> Mostrar el precio en la etiqueta
-  </label>
-  <div class="calculado">Total: <b id="total-etiquetas">0</b> etiquetas</div>
-
-  <div class="botones">
-    <a class="boton grande" href="/productos">✖ Cancelar</a>
-    <button class="boton grande principal" type="submit">👀 Ver etiquetas</button>
-  </div>
-</form>
+  <section class="tarjeta opcion" id="producto">
+    <h2>📦 Etiquetas de un producto</h2>
+    <p class="ayuda">Elegí el producto y cuántas etiquetas querés.</p>
+    <script type="application/json" id="datos-productos">{{ productos_json|safe }}</script>
+    <form method="get" action="/etiquetas/producto.pdf" class="formulario sin-borde">
+      <input type="hidden" name="producto_id" id="etiqueta-producto-id" value="{{ elegido.id if elegido else '' }}">
+      <div class="buscador" data-buscador="#datos-productos" data-destino="#etiqueta-producto-id" id="buscador-etiqueta">
+        <label for="buscar-etiqueta">Producto</label>
+        <input type="text" id="buscar-etiqueta" placeholder="🔎 Escribí el nombre o el código…" autocomplete="off"
+               role="combobox" aria-expanded="false" aria-controls="lista-etiqueta" aria-autocomplete="list"
+               value="{{ elegido.nombre_interno if elegido else '' }}">
+        <ul class="sugerencias" id="lista-etiqueta" role="listbox" hidden></ul>
+      </div>
+      <label>¿Cuántas etiquetas?
+        <input type="number" name="cantidad" min="1" max="1000" value="{{ elegido.stock|round|int if elegido and elegido.stock > 0 else 1 }}" inputmode="numeric" required>
+      </label>
+      <label class="casilla"><input type="checkbox" name="precio" value="no"> No mostrar el precio</label>
+      <div class="botones"><button class="boton grande principal" type="submit">⬇️ Descargar etiquetas</button></div>
+    </form>
+  </section>
+</div>
 {% endblock %}

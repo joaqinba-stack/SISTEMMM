@@ -1,4 +1,4 @@
-// Ayudas de la página: cálculos automáticos, búsqueda y stock que se actualiza solo.
+// Ayudas de la página: buscadores, carrito de venta, cálculos automáticos y stock que se actualiza solo.
 (function () {
   "use strict";
 
@@ -15,16 +15,256 @@
     }
     return parseFloat(limpio);
   }
-
-  function miles(n) {
-    return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  }
+  function miles(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "."); }
   function gs(n) { return isFinite(n) ? "₲ " + miles(n) : "—"; }
   function cant(n) {
     n = Math.round(n * 1000) / 1000;
     return Number.isInteger(n) ? miles(n) : String(n).replace(".", ",");
   }
+  function norm(s) {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  }
+  function esc(s) {
+    return String(s === undefined || s === null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
 
+  // ------------------------------------------------------------------ buscador
+  // Cuadro de texto con lista de sugerencias. Al elegir una opción la lista se cierra.
+  var buscadores = {};
+  function crearBuscador(raiz) {
+    var entrada = raiz.querySelector("input[type=text]");
+    var lista = raiz.querySelector(".sugerencias");
+    var datos = JSON.parse(document.querySelector(raiz.dataset.buscador).textContent);
+    var destino = raiz.dataset.destino ? document.querySelector(raiz.dataset.destino) : null;
+    var visibles = [], activo = -1;
+    var api = { elegido: null, alElegir: null, alCrear: null, entrada: entrada };
+
+    function cerrar() { lista.hidden = true; entrada.setAttribute("aria-expanded", "false"); activo = -1; }
+    function pintar() {
+      var q = norm(entrada.value.trim());
+      visibles = datos.filter(function (d) {
+        return !q || norm(d.texto + " " + (d.detalle || "") + " " + (d.buscar || "")).indexOf(q) >= 0;
+      }).slice(0, 40);
+      var html = visibles.map(function (d, i) {
+        return '<li role="option" id="' + lista.id + "-" + i + '" data-i="' + i + '" class="' + (i === activo ? "activa" : "") + '">' +
+          "<b>" + esc(d.texto) + "</b>" + (d.detalle ? "<span>" + esc(d.detalle) + "</span>" : "") + "</li>";
+      }).join("");
+      if (raiz.dataset.crear && q) {
+        html += '<li role="option" class="crear" data-crear="1">➕ Crear cliente nuevo «' + esc(entrada.value.trim()) + "»</li>";
+      }
+      if (!html) html = '<li class="nada">No se encontró nada con ese nombre.</li>';
+      lista.innerHTML = html;
+      lista.hidden = false;
+      entrada.setAttribute("aria-expanded", "true");
+      entrada.setAttribute("aria-activedescendant", activo >= 0 ? lista.id + "-" + activo : "");
+    }
+    function elegir(d) {
+      api.elegido = d;
+      entrada.value = d.texto;
+      if (destino) destino.value = d.id;
+      cerrar();
+      if (api.alElegir) api.alElegir(d);
+    }
+
+    entrada.addEventListener("focus", pintar);
+    entrada.addEventListener("click", pintar);
+    entrada.addEventListener("input", function () {
+      api.elegido = null;
+      if (destino) destino.value = "";
+      activo = -1;
+      pintar();
+    });
+    entrada.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (lista.hidden) pintar();
+        var total = visibles.length;
+        if (!total) return;
+        activo = e.key === "ArrowDown" ? (activo + 1) % total : (activo - 1 + total) % total;
+        pintar();
+        var li = lista.querySelector(".activa");
+        if (li) li.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (lista.hidden && api.elegido) {
+          if (api.alElegir) api.alElegir(api.elegido);
+          return;
+        }
+        if (activo >= 0 && visibles[activo]) elegir(visibles[activo]);
+        else if (visibles.length === 1) elegir(visibles[0]);
+        else if (raiz.dataset.crear && entrada.value.trim() && !visibles.length) {
+          cerrar();
+          if (api.alCrear) api.alCrear(entrada.value.trim());
+        }
+      } else if (e.key === "Escape") {
+        cerrar();
+      }
+    });
+    entrada.addEventListener("blur", function () { setTimeout(cerrar, 150); });
+    lista.addEventListener("mousedown", function (e) { e.preventDefault(); });
+    lista.addEventListener("click", function (e) {
+      var li = e.target.closest("li");
+      if (!li) return;
+      if (li.dataset.crear) {
+        cerrar();
+        if (api.alCrear) api.alCrear(entrada.value.trim());
+      } else if (li.dataset.i !== undefined) {
+        elegir(visibles[+li.dataset.i]);
+      }
+    });
+
+    api.elegir = elegir;
+    api.agregar = function (d) { datos.push(d); };
+    api.limpiar = function () {
+      api.elegido = null;
+      entrada.value = "";
+      if (destino) destino.value = "";
+      cerrar();
+    };
+    if (destino && destino.value) {
+      api.elegido = datos.filter(function (d) { return String(d.id) === destino.value; })[0] || null;
+    }
+    return api;
+  }
+  document.querySelectorAll(".buscador[data-buscador]").forEach(function (raiz) {
+    buscadores[raiz.id] = crearBuscador(raiz);
+  });
+
+  // ------------------------------------------------------------------ venta (carrito)
+  var formVenta = document.querySelector("form[data-venta]");
+  if (formVenta) {
+    var bProducto = buscadores["buscador-producto"];
+    var bCliente = buscadores["buscador-cliente"];
+    var campoCantidad = document.getElementById("cantidad-producto");
+    var errorProducto = document.getElementById("error-producto");
+    var cuerpo = document.querySelector("#carrito tbody");
+    var botonGuardar = document.getElementById("guardar-venta");
+    var carrito = [];
+
+    var mostrarError = function (texto) {
+      errorProducto.textContent = texto;
+      errorProducto.hidden = !texto;
+    };
+    var pintarCarrito = function () {
+      var total = 0;
+      cuerpo.innerHTML = carrito.length ? carrito.map(function (item, i) {
+        var subtotal = item.cantidad * item.producto.precio;
+        total += subtotal;
+        return "<tr>" +
+          '<td data-titulo="Producto"><b>' + esc(item.producto.texto) + "</b>" +
+          '<input type="hidden" name="producto_id" value="' + item.producto.id + '">' +
+          '<input type="hidden" name="cantidad" value="' + item.cantidad + '"></td>' +
+          '<td data-titulo="Cantidad" class="num">' + cant(item.cantidad) + "</td>" +
+          '<td data-titulo="Precio" class="num">' + gs(item.producto.precio) + "</td>" +
+          '<td data-titulo="Subtotal" class="num"><b>' + gs(subtotal) + "</b></td>" +
+          '<td><button class="boton chico peligro" type="button" data-quitar="' + i + '" aria-label="Quitar ' +
+          esc(item.producto.texto) + '">🗑️ Quitar</button></td></tr>';
+      }).join("") : '<tr class="carrito-vacio"><td colspan="5">Todavía no agregaste productos.</td></tr>';
+      document.getElementById("total-venta").textContent = gs(total);
+      botonGuardar.disabled = !carrito.length;
+    };
+    var agregar = function () {
+      var producto = bProducto.elegido;
+      if (!producto) return mostrarError("Elegí un producto de la lista.");
+      var n = parseInt(campoCantidad.value, 10);
+      if (!(n > 0)) return mostrarError("Escribí una cantidad mayor a cero.");
+      var existente = carrito.filter(function (it) { return it.producto.id === producto.id; })[0];
+      var nuevaCantidad = (existente ? existente.cantidad : 0) + n;
+      if (nuevaCantidad > producto.stock + 1e-9) {
+        return mostrarError("No alcanza: de «" + producto.texto + "» hay " + cant(producto.stock) + ".");
+      }
+      if (existente) existente.cantidad = nuevaCantidad;
+      else carrito.push({ producto: producto, cantidad: n });
+      mostrarError("");
+      bProducto.limpiar();
+      campoCantidad.value = 1;
+      pintarCarrito();
+      bProducto.entrada.focus();
+    };
+    bProducto.alElegir = function () { mostrarError(""); campoCantidad.focus(); campoCantidad.select(); };
+    document.getElementById("agregar-producto").addEventListener("click", agregar);
+    campoCantidad.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); agregar(); }
+    });
+    cuerpo.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-quitar]");
+      if (!b) return;
+      carrito.splice(+b.dataset.quitar, 1);
+      pintarCarrito();
+    });
+
+    // Cliente: buscar, elegir o crear uno nuevo.
+    var campoCliente = document.getElementById("cliente_id");
+    var cajaBuscar = document.getElementById("buscador-cliente");
+    var cajaElegido = document.getElementById("cliente-elegido");
+    var cajaNuevo = document.getElementById("nuevo-cliente");
+    var errorCliente = document.getElementById("nc-error");
+    var mostrarCliente = function (d) {
+      campoCliente.value = d ? d.id : "";
+      document.getElementById("cliente-nombre").textContent = d ? d.texto : "";
+      document.getElementById("cliente-detalle").textContent = d && d.detalle ? "· " + d.detalle : "";
+      cajaElegido.hidden = !d;
+      cajaBuscar.hidden = !!d;
+      cajaNuevo.hidden = true;
+    };
+    bCliente.alElegir = mostrarCliente;
+    bCliente.alCrear = function (texto) {
+      document.getElementById("nc-nombre").value = texto;
+      document.getElementById("nc-telefono").value = "";
+      document.getElementById("nc-documento").value = "";
+      errorCliente.hidden = true;
+      cajaBuscar.hidden = true;
+      cajaNuevo.hidden = false;
+      document.getElementById("nc-telefono").focus();
+    };
+    document.getElementById("quitar-cliente").addEventListener("click", function () {
+      mostrarCliente(null);
+      bCliente.limpiar();
+      bCliente.entrada.focus();
+    });
+    document.getElementById("nc-cancelar").addEventListener("click", function () {
+      cajaNuevo.hidden = true;
+      cajaBuscar.hidden = false;
+      bCliente.entrada.focus();
+    });
+    document.getElementById("nc-guardar").addEventListener("click", function () {
+      var boton = this;
+      var datos = {
+        nombre: document.getElementById("nc-nombre").value.trim(),
+        telefono: document.getElementById("nc-telefono").value.trim(),
+        documento: document.getElementById("nc-documento").value.trim()
+      };
+      if (!datos.nombre) {
+        errorCliente.textContent = "Falta escribir el nombre del cliente.";
+        errorCliente.hidden = false;
+        return;
+      }
+      boton.disabled = true;
+      fetch("/api/clientes", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(datos)
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          boton.disabled = false;
+          if (!res.ok) throw new Error(res.j.error || "No se pudo guardar el cliente.");
+          bCliente.agregar(res.j);
+          bCliente.elegir(res.j);
+        })
+        .catch(function (err) {
+          boton.disabled = false;
+          errorCliente.textContent = err.message || "No se pudo guardar el cliente. Probá de nuevo.";
+          errorCliente.hidden = false;
+        });
+    });
+    formVenta.addEventListener("submit", function (e) {
+      if (!carrito.length) { e.preventDefault(); mostrarError("Agregá al menos un producto a la venta."); }
+    });
+    pintarCarrito();
+  }
+
+  // ------------------------------------------------------------------ formularios con precios
   // Campos de dinero: al salir del campo se muestran con puntos de miles.
   document.querySelectorAll("input[data-dinero]").forEach(function (campo) {
     campo.addEventListener("blur", function () {
@@ -35,7 +275,7 @@
     if (isFinite(n)) campo.value = miles(n);
   });
 
-  // Precio unitario, % de ganancia y precio de venta.
+  // Precio unitario, % de ganancia y precio de venta (Nuevo producto y Editar).
   document.querySelectorAll("form[data-calculo-precio]").forEach(function (form) {
     var cantidad = form.querySelector("#cantidad");
     var costo = form.querySelector("#costo_total");
@@ -43,7 +283,6 @@
     var costoBase = form.querySelector("#costo_base");
     var margen = form.querySelector("#margen_pct");
     var precio = form.querySelector("#precio_venta");
-    var opcional = precio && precio.hasAttribute("data-opcional");
     var precioEscritoAMano = precio && precio.value !== "";
 
     function unitario() {
@@ -53,21 +292,14 @@
       }
       return costoBase ? parseFloat(costoBase.value) : NaN;
     }
-
     function recalcular() {
       var u = unitario();
       if (unitarioTxt) unitarioTxt.textContent = gs(u);
       if (!precio || !margen) return;
       var m = leerNumero(margen.value);
       if (!(u > 0) || !isFinite(m)) return;
-      var sugerido = Math.round(u * (1 + m / 100));
-      if (opcional) {
-        precio.placeholder = "Sugerido: " + gs(sugerido);
-      } else if (!precioEscritoAMano) {
-        precio.value = miles(sugerido);
-      }
+      if (!precioEscritoAMano) precio.value = miles(Math.round(u * (1 + m / 100)));
     }
-
     [cantidad, costo].forEach(function (campo) {
       if (campo) campo.addEventListener("input", recalcular);
     });
@@ -81,96 +313,39 @@
       if (margen && u > 0 && p > 0) margen.value = Math.round((p / u - 1) * 1000) / 10;
     });
     if (!costoBase) recalcular();
+  });
 
-    // Compra nueva: al elegir el producto se completa el proveedor y su % de ganancia.
-    var elegir = form.querySelector("[data-elegir-producto]");
-    if (elegir) elegir.addEventListener("change", function () {
-      var op = elegir.selectedOptions[0];
-      if (!op) return;
-      var prov = form.querySelector("#proveedor");
-      if (prov && !prov.value) prov.value = op.dataset.proveedor || "";
-      if (margen && op.dataset.margen) margen.value = parseFloat(op.dataset.margen);
-      recalcular();
+  // Tabla de productos: al escribir el % se ve cómo queda el precio antes de guardar.
+  document.querySelectorAll("input[data-precio-de]").forEach(function (campo) {
+    var celda = document.getElementById(campo.dataset.precioDe);
+    var original = celda.textContent;
+    campo.addEventListener("input", function () {
+      var costo = parseFloat(campo.dataset.costo), m = leerNumero(campo.value);
+      if (costo > 0 && isFinite(m) && m >= 0) {
+        celda.innerHTML = '<span class="precio-nuevo">' + gs(Math.round(costo * (1 + m / 100))) + "</span>" +
+          '<span class="suave chica"> tocá ✓ para guardar</span>';
+      } else {
+        celda.textContent = original;
+      }
     });
   });
 
-  // Venta: al elegir el producto se pone su precio y se calcula el total.
-  var elegirVenta = document.querySelector("[data-elegir-venta]");
-  if (elegirVenta) {
-    var cantVenta = document.getElementById("venta_cantidad");
-    var precioVenta = document.getElementById("venta_precio");
-    var totalVenta = document.getElementById("venta_total");
-    var calcularTotal = function () {
-      var t = leerNumero(cantVenta.value) * leerNumero(precioVenta.value);
-      totalVenta.textContent = gs(t);
-    };
-    elegirVenta.addEventListener("change", function () {
-      var op = elegirVenta.selectedOptions[0];
-      if (op) precioVenta.value = miles(parseFloat(op.dataset.precio || "0"));
-      calcularTotal();
-    });
-    cantVenta.addEventListener("input", calcularTotal);
-    precioVenta.addEventListener("input", calcularTotal);
-  }
-
-  // Buscar en una tabla.
+  // ------------------------------------------------------------------ tablas
   document.querySelectorAll("input[data-buscar]").forEach(function (campo) {
     var tabla = document.querySelector(campo.dataset.buscar);
     campo.addEventListener("input", function () {
-      var q = campo.value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      var q = norm(campo.value);
       tabla.querySelectorAll("tbody tr").forEach(function (fila) {
-        var texto = fila.textContent.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-        fila.classList.toggle("oculto-busqueda", q !== "" && texto.indexOf(q) < 0);
+        fila.classList.toggle("oculto-busqueda", q !== "" && norm(fila.textContent).indexOf(q) < 0);
       });
     });
   });
 
-  // Mostrar u ocultar productos inactivos.
   document.querySelectorAll("input[data-mostrar-inactivos]").forEach(function (casilla) {
     var tabla = document.querySelector(casilla.dataset.mostrarInactivos);
     var aplicar = function () { tabla.classList.toggle("ver-inactivos", casilla.checked); };
     casilla.addEventListener("change", aplicar);
     aplicar();
-  });
-
-  // Filtrar las opciones de una lista de productos mientras se escribe.
-  document.querySelectorAll("input[data-filtrar-select]").forEach(function (campo) {
-    var lista = document.querySelector(campo.dataset.filtrarSelect);
-    campo.addEventListener("input", function () {
-      var q = campo.value.toLowerCase();
-      var primera = null;
-      Array.prototype.forEach.call(lista.options, function (op) {
-        var ve = op.textContent.toLowerCase().indexOf(q) >= 0;
-        op.hidden = !ve;
-        if (ve && !primera) primera = op;
-      });
-      if (primera && q) {
-        lista.value = primera.value;
-        lista.dispatchEvent(new Event("change"));
-      }
-    });
-  });
-
-  // Etiquetas: botones rápidos (solo afectan a los productos que se ven) y total.
-  document.querySelectorAll("form[data-etiquetas]").forEach(function (form) {
-    var campos = form.querySelectorAll("input.copias");
-    var total = form.querySelector("#total-etiquetas");
-    var sumar = function () {
-      var n = 0;
-      campos.forEach(function (c) { n += Math.max(0, parseInt(c.value, 10) || 0); });
-      total.textContent = miles(n);
-    };
-    form.querySelectorAll("[data-copias]").forEach(function (boton) {
-      boton.addEventListener("click", function () {
-        campos.forEach(function (c) {
-          if (c.closest("tr").classList.contains("oculto-busqueda")) return;
-          c.value = boton.dataset.copias === "stock" ? c.dataset.stock : boton.dataset.copias;
-        });
-        sumar();
-      });
-    });
-    campos.forEach(function (c) { c.addEventListener("input", sumar); });
-    sumar();
   });
 
   // Pedir confirmación antes de acciones importantes.
@@ -180,8 +355,8 @@
     });
   });
 
-  // Evitar doble envío (tocar dos veces "Guardar").
-  document.querySelectorAll("form").forEach(function (form) {
+  // Evitar doble envío (tocar dos veces "Guardar"). Las descargas (GET) no se bloquean.
+  document.querySelectorAll("form[method=post]").forEach(function (form) {
     form.addEventListener("submit", function (e) {
       if (e.defaultPrevented) return;
       var boton = form.querySelector("button[type=submit]");

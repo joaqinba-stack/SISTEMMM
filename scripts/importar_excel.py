@@ -129,11 +129,14 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
                     continue
                 cantidad = numero(f.get("Cantidad"))
                 precio = numero(f.get("Precio Unit."))
+                nombre_cliente = str(f.get("Cliente") or "").strip()
+                cliente_id = inv.crear_cliente(con, nombre_cliente)["id"] if nombre_cliente else None
+                medio = (f.get("Medio Pago") or "").strip().capitalize()
                 if sku in desde_hoja_producto:
+                    # Ya está descontada del stock disponible: solo se guarda como historial.
                     venta_id = con.execute(
-                        "INSERT INTO ventas (fecha, cliente, medio_pago) VALUES (?, ?, ?)",
-                        (inv.leer_fecha(f.get("Fecha")), (f.get("Cliente") or "").strip(),
-                         (f.get("Medio Pago") or "").strip().capitalize()),
+                        "INSERT INTO ventas (fecha, cliente_id, medio_pago) VALUES (?, ?, ?)",
+                        (inv.leer_fecha(f.get("Fecha")), cliente_id, medio),
                     ).lastrowid
                     costo = cantidad * inv.costo_referencia(con, fila["id"])
                     con.execute(
@@ -143,10 +146,11 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
                     )
                 else:
                     try:
-                        inv.registrar_venta(con, fila["id"], cantidad, precio,
-                                            f.get("Cliente") or "",
-                                            (f.get("Medio Pago") or "").strip().capitalize(),
-                                            f.get("Fecha"))
+                        r = inv.registrar_venta(con, [{"producto_id": fila["id"], "cantidad": cantidad}],
+                                                cliente_id, medio, f.get("Fecha"))
+                        # Se respeta el precio al que se vendió en el Excel.
+                        con.execute("UPDATE venta_items SET precio_unit = ? WHERE venta_id = ?",
+                                    (precio, r["venta_id"]))
                     except inv.ErrorNegocio as exc:
                         avisos.append(f"Venta {sku}: {exc}")
 

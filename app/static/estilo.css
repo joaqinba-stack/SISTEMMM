@@ -43,7 +43,11 @@ h2 { font-size: 1.25rem; margin: 1.2rem 0 0.6rem; }
   gap: 2px; padding: 8px 6px; color: #fff; text-decoration: none; border-radius: 10px;
   font-size: 1.4rem; text-align: center;
 }
-.menu a span { font-size: 0.8rem; font-weight: 600; line-height: 1.15; }
+.menu a > span:last-child { font-size: 0.8rem; font-weight: 600; line-height: 1.15; }
+.campana { position: relative; display: inline-block; }
+.globo { position: absolute; top: -6px; right: -14px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--rojo); color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 22px; text-align: center;
+  box-shadow: 0 0 0 2px var(--verde); }
 .menu a:hover, .menu a.activo { background: rgba(255,255,255,.2); }
 
 .contenido { max-width: 1400px; margin: 0 auto; padding: 16px; }
@@ -152,7 +156,9 @@ input[readonly] { background: #f0eee9; }
 @media (max-width: 760px) {
   html { font-size: 18px; }
   .menu a { min-width: 70px; font-size: 1.3rem; }
-  .menu a span { font-size: 0.7rem; }
+  .menu a { min-width: 0; padding: 8px 2px; }
+  .menu a:first-child { flex-grow: 1.35; }
+  .menu a > span:last-child { font-size: 0.66rem; }
   .dos-columnas { grid-template-columns: minmax(0, 1fr); }
   .tabla-envoltura { background: transparent; border: 0; }
   .tabla thead { display: none; }
@@ -181,29 +187,72 @@ input[readonly] { background: #f0eee9; }
   .miniatura, .sin-foto { width: 40px; height: 40px; }
 }
 
-/* ---- Etiquetas con código de barra (hoja A4 de 3 x 7 = 21 etiquetas de 63,5 x 38,1 mm) ---- */
-.formulario.ancho { max-width: 1000px; }
-.copias { max-width: 120px; margin-left: auto; text-align: center; font-size: 1.1rem; font-weight: 700; }
-.hoja-etiquetas {
-  display: grid; grid-template-columns: repeat(3, 63.5mm); grid-auto-rows: 38.1mm;
-  column-gap: 2.5mm; justify-content: center; margin-top: 18px;
+
+/* ---- Notificaciones vacías ---- */
+.vacio { text-align: center; background: var(--papel); border: 1px solid var(--borde); border-radius: var(--radio); padding: 36px 18px; }
+.vacio-icono { font-size: 3rem; }
+.vacio h2 { margin-top: 6px; }
+.vacio p { max-width: 34em; margin: 0 auto; color: var(--suave); }
+
+/* ---- Buscador con sugerencias ---- */
+.buscador { position: relative; margin: 12px 0; }
+.buscador > label { margin: 0; }
+.sugerencias {
+  position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none;
+  max-height: 320px; overflow-y: auto; background: var(--papel); border: 2px solid var(--verde); border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.18);
 }
-.etiqueta-impresa {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6mm;
-  padding: 2mm 3mm; overflow: hidden; background: #fff; border: 1px dashed #bbb;
-  break-inside: avoid; page-break-inside: avoid; text-align: center; color: #000;
-}
-.etiqueta-nombre {
-  font-size: 8.5pt; font-weight: 700; line-height: 1.15; max-height: 2.3em; overflow: hidden;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-}
-.etiqueta-barra { height: 15mm; max-width: 100%; display: block; }
-.etiqueta-precio { font-size: 12pt; font-weight: 800; line-height: 1; }
-.etiqueta-codigo { font-size: 6.5pt; color: #333; white-space: nowrap; }
-@media screen and (max-width: 760px) {
-  .hoja-etiquetas { grid-template-columns: repeat(auto-fill, 63.5mm); }
-}
-@media print {
-  .hoja-etiquetas { margin: 0; }
-  .etiqueta-impresa { border: 0; }
+.sugerencias li { padding: 10px 12px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.sugerencias li span { font-size: 0.82rem; color: var(--suave); }
+.sugerencias li:hover, .sugerencias li.activa { background: var(--verde-claro); }
+.sugerencias li.crear { color: var(--verde); font-weight: 700; border-top: 1px solid var(--borde); }
+.sugerencias li.nada { color: var(--suave); cursor: default; }
+.error-linea { color: var(--rojo); font-weight: 700; margin: 6px 0; }
+
+/* ---- Venta ---- */
+.agregar-producto { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; gap: 12px; align-items: end; }
+.agregar-producto .buscador, .agregar-producto .campo-cantidad { margin: 0; }
+.agregar-producto .agregar { min-height: 54px; }
+.carrito-envoltura { margin-top: 14px; }
+.carrito-vacio td { color: var(--suave); text-align: center; padding: 18px; }
+.total-venta { font-size: 1.2rem; text-align: right; }
+.elegido { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+  background: var(--verde-claro); border-radius: 10px; padding: 10px 14px; margin: 12px 0; }
+.nuevo-cliente { border: 2px solid var(--verde); }
+.nuevo-cliente h3 { margin: 0 0 4px; color: var(--verde); }
+
+/* ---- Etiquetas ---- */
+.dos-opciones { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.opcion h2 { margin-top: 4px; }
+.lista-facturas { max-height: 460px; overflow-y: auto; }
+.formulario.sin-borde { border: 0; padding: 0; background: transparent; }
+
+/* ---- Productos: % por producto ---- */
+.margen-form { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.margen-form input { width: 78px; min-height: 42px !important; padding: 6px 8px !important; margin: 0 !important; text-align: right; }
+.precio-nuevo { font-weight: 700; color: var(--verde); }
+
+/* ---- Panel de compras ---- */
+.filtros-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 14px; max-width: none; align-items: end; }
+.filtros-panel .botones { margin: 12px 0; grid-column: 1 / -1; }
+.indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin: 18px 0; }
+.indicador { background: var(--papel); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 18px; display: grid; gap: 4px; }
+.indicador span { color: var(--suave); font-size: 0.85rem; text-transform: uppercase; letter-spacing: .04em; }
+.indicador b { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.grafico h2 { margin-top: 4px; }
+.barras { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.barras li { display: grid; grid-template-columns: minmax(0, 9em) minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.barra-nombre { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-pista { height: 18px; background: #f0eee9; border-radius: 0 4px 4px 0; }
+.barra-relleno { display: block; height: 100%; min-width: 2px; background: var(--verde); border-radius: 0 4px 4px 0; }
+.barra-valor { font-size: 0.85rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .agregar-producto { grid-template-columns: minmax(0, 1fr); }
+  .dos-opciones { grid-template-columns: minmax(0, 1fr); }
+  .graficos { grid-template-columns: minmax(0, 1fr); }
+  .barras li { grid-template-columns: minmax(0, 1fr) auto; }
+  .barra-pista { grid-column: 1 / -1; grid-row: 2; }
+  .total-venta { text-align: left; }
 }
