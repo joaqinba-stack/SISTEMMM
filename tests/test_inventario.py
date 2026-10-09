@@ -149,3 +149,20 @@ def test_buscar_coincidencia(con):
     encontrado = inv.buscar_coincidencia(con, "MOLDE VELA ROSA R01 M J27533", prov)
     assert encontrado["id"] == p["id"]
     assert inv.buscar_coincidencia(con, "Pistola de calor", prov) is None
+
+
+def test_unir_producto_creado_por_error(con):
+    bueno = inv.crear_producto(con, {"nombre_interno": "Pistola de calor", "proveedor": "Pacific",
+                                     "cantidad": 2, "costo_total": 80000})
+    malo = inv.crear_producto(con, {"nombre_interno": "PISTOLA CALOR 300W XQ", "proveedor": "Pacific",
+                                    "cantidad": 3, "costo_total": 120000, "revisar": True})
+    inv.registrar_venta(con, [{"producto_id": malo["id"], "cantidad": 1}])
+    r = inv.unir_productos(con, malo["id"], bueno["id"])
+    assert r["stock"] == 4 and r["borrado"] == malo["sku"]
+    assert inv.obtener_producto(con, malo["id"]) is None
+    assert {c["nombre_interno"] for c in inv.listar_compras(con)} == {"Pistola de calor"}
+    assert inv.ultimas_ventas(con)[0]["items"][0]["nombre_interno"] == "Pistola de calor"
+    # aprendió el nombre: la próxima factura se reconoce sola
+    assert inv.buscar_coincidencia(con, "pistola calor 300w xq", None)["id"] == bueno["id"]
+    with pytest.raises(inv.ErrorNegocio, match="distinto"):
+        inv.unir_productos(con, bueno["id"], bueno["id"])

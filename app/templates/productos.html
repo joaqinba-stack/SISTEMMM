@@ -6,7 +6,7 @@
   <div class="botones no-imprimir">
     <a class="boton" href="/etiquetas">🏷️ Imprimir códigos de barra</a>
     <a class="boton" href="/productos/excel">📊 Pasar a Excel</a>
-    <a class="boton principal" href="/productos/nuevo">✨ Nuevo</a>
+    <a class="boton principal" href="/productos/nuevo">✨ Nuevo producto</a>
   </div>
 </div>
 
@@ -59,7 +59,7 @@
       <td class="no-imprimir"><a class="boton chico" href="/productos/{{ p.id }}/editar">✏️ Editar</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="12">Todavía no hay productos. Tocá <a href="/productos/nuevo">🏷️ Nuevo</a> para cargar el primero.</td></tr>
+    <tr><td colspan="12">Todavía no hay productos. Tocá <a href="/productos/nuevo">✨ Nuevo producto</a> para cargar el primero.</td></tr>
   {% endfor %}
   </tbody>
 </table>

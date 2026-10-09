@@ -256,3 +256,60 @@ input[readonly] { background: #f0eee9; }
   .barra-pista { grid-column: 1 / -1; grid-row: 2; }
   .total-venta { text-align: left; }
 }
+
+/* ---- Gráfico de costos ---- */
+.grafico-costo { margin-top: 0; }
+.indicadores.chicos { margin: 10px 0 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.indicadores.chicos .indicador b { font-size: 1.3rem; }
+.indicador b small { font-size: 0.8rem; font-weight: 600; }
+.sube { color: var(--rojo); }
+.baja { color: var(--verde); }
+.grafico-envoltura { position: relative; }
+.grafico-linea { width: 100%; height: auto; display: block; font-family: inherit; }
+.grafico-linea .grilla { stroke: #e6e2da; stroke-width: 1; }
+.grafico-linea .eje { fill: var(--suave); font-size: 13px; font-variant-numeric: tabular-nums; }
+.grafico-linea .linea { fill: none; stroke: var(--verde); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.grafico-linea .punto { fill: var(--verde); stroke: var(--papel); stroke-width: 2; cursor: pointer; }
+.grafico-linea .punto:hover, .grafico-linea .punto:focus { r: 8; outline: none; }
+.grafico-linea .valor { fill: var(--texto); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tooltip-grafico { position: absolute; z-index: 5; max-width: 280px; padding: 8px 12px; border-radius: 10px;
+  background: var(--texto); color: var(--papel); font-size: 0.8rem; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+
+/* ---- Notificaciones: productos para revisar ---- */
+.lista-revisar { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.lista-revisar li { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between;
+  background: var(--papel); border-radius: 10px; padding: 10px 12px; }
+.lista-revisar .botones { margin: 0; gap: 8px; }
+
+/* ---- Unir productos ---- */
+.unir { border: 2px dashed var(--borde); }
+.unir h2 { margin-top: 4px; }
+
+/* ---- Etiquetas: tamaño y vista previa ---- */
+.tamanos-zona { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; align-items: center; }
+.tamanos { display: flex; flex-wrap: wrap; gap: 10px; }
+.tamano { margin: 0; display: grid; justify-items: center; align-content: end; gap: 6px; min-width: 104px; min-height: 104px;
+  padding: 10px; border: 2px solid var(--borde); border-radius: 12px; background: var(--papel); cursor: pointer; }
+.tamano { position: relative; }
+.tamano input[type=radio] { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.tamano-dibujo { display: block; border: 2px solid var(--suave); border-radius: 4px; background: #fff; }
+.tamano-medida { font-size: 0.85rem; font-weight: 700; white-space: nowrap; }
+.tamano.elegido { border-color: var(--verde); background: var(--verde-claro); }
+.tamano.elegido .tamano-dibujo { border-color: var(--verde); }
+.tamano:focus-within { outline: 3px solid #9cc3b4; }
+.vista-previa { margin: 0; text-align: center; }
+.vista-previa img { width: 100%; max-width: 340px; height: auto; background: #fff; border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18); }
+.vista-previa figcaption { margin-top: 8px; color: var(--suave); font-size: 0.85rem; }
+.impresora-lista { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.en-linea-chica { display: inline; margin: 0; }
+.como-imprimir ol { margin: 8px 0; padding-left: 1.3rem; display: grid; gap: 6px; }
+.acciones-fila { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.acciones-fila form { margin: 0; }
+.enlace { background: none; border: 0; padding: 0; color: var(--azul); text-decoration: underline; cursor: pointer; font: inherit; }
+
+@media (max-width: 760px) {
+  .tamanos-zona { grid-template-columns: minmax(0, 1fr); }
+  .tamano { min-width: 0; flex: 1 1 calc(33% - 10px); }
+  .acciones-fila { justify-content: flex-start; }
+}

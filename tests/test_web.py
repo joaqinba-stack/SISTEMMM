@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
-from app import config
+from app import config, db, impresora, inventario as inv
 from app.main import app
 
 
@@ -104,25 +104,78 @@ def test_panel_de_compras_con_filtros():
         assert libro.active.max_row == 2 and libro.active["E2"].value == "Molde B"
 
 
-def test_etiquetas_pdf_por_factura_y_por_producto():
+def test_etiquetas_tamano_pdf_e_impresora(monkeypatch):
     with cliente() as c:
         nuevo_producto(c, "Molde A", cantidad="3", costo="3000")
         r = c.get("/etiquetas")
-        assert "Etiquetas de una factura" in r.text and "Etiquetas de un producto" in r.text
-        assert "data-copias" not in r.text
+        assert "Tamaño de la etiqueta" in r.text and "Cómo conectar la impresora" in r.text
+        assert "🖨️ Imprimir</button>" not in r.text  # sin impresora configurada solo hay PDF
+
+        r = c.post("/etiquetas/tamano", data={"tamano": "40x40"})
+        assert "40 × 40 mm" in r.text and 'value="40x40" checked' in r.text
+        assert 'viewBox="0 0 40 40"' in c.get("/etiquetas/vista.svg?producto_id=1").text
 
         r = c.get("/etiquetas/factura/1.pdf")
-        assert r.headers["content-type"] == "application/pdf"
-        assert textos_pdf(r.content).count("20022001") == 3  # una por unidad comprada
-
-        r = c.get("/etiquetas/producto.pdf?producto_id=1&cantidad=25")
         lector = PdfReader(io.BytesIO(r.content))
-        assert len(lector.pages) == 2  # 21 por hoja
+        assert len(lector.pages) == 3  # una etiqueta por unidad, una por página del rollo
+        assert abs(float(lector.pages[0].mediabox.width) - 40 * 72 / 25.4) < 0.5
+
+        r = c.post("/etiquetas/producto", data={"producto_id": "1", "cantidad": "25", "accion": "a4"})
+        assert len(PdfReader(io.BytesIO(r.content)).pages) == 2  # 21 por hoja A4
         assert textos_pdf(r.content).count("20022001") == 25 and "Gs. 1.400" in textos_pdf(r.content)
 
-        r = c.get("/etiquetas/producto.pdf?producto_id=&cantidad=2")
+        r = c.post("/etiquetas/producto", data={"producto_id": "", "cantidad": "2", "accion": "pdf"})
         assert "Elegí el producto" in r.text
-        assert c.get("/etiquetas?producto_id=1").text.count('value="Molde A"') == 1
+
+        enviados = []
+        monkeypatch.setattr(config, "IMPRESORA_NOMBRE", "Xprinter XP-365B")
+        monkeypatch.setattr(impresora, "enviar", lambda datos: enviados.append(datos))
+        r = c.get("/etiquetas")
+        assert "Xprinter XP-365B" in r.text and "🧪 Imprimir etiqueta de prueba" in r.text
+        r = c.post("/etiquetas/factura/1/imprimir")
+        assert "Se mandaron 3 etiqueta(s) de 40 × 40 mm" in r.text
+        r = c.post("/etiquetas/producto", data={"producto_id": "1", "cantidad": "5", "accion": "imprimir"})
+        assert "Se mandaron 5 etiqueta(s)" in r.text
+        assert b"SIZE 40 mm,40 mm" in enviados[0] and b"PRINT 1,5" in enviados[1]
+
+
+def test_grafico_de_costo_del_producto_con_filtros():
+    with cliente() as c:
+        nuevo_producto(c, "Molde A", fecha="2026-03-10", proveedor="Pacific", cantidad="10", costo="10000")
+        for fecha, prov, costo in (("2026-04-10", "Pacific", "12000"), ("2026-05-10", "Super K", "9000"),
+                                   ("2026-06-10", "Pacific", "15000")):
+            with db.conexion() as con:
+                inv.registrar_compra(con, fecha, "F", prov, [{"producto_id": 1, "cantidad": 10, "costo_total": costo}])
+        r = c.get("/compras/panel?producto_id=1")
+        assert "Costo por unidad" in r.text
+        puntos = re.search(r'<polyline class="linea" points="([^"]+)"', r.text).group(1).split()
+        assert len(puntos) == 4
+        assert "▲" in r.text and "+50,0%" in r.text  # de 1.000 a 1.500
+        pacific = re.search(r'<option value="(\d+)"[^>]*>Pacific<', r.text).group(1)
+        r = c.get(f"/compras/panel?producto_id=1&proveedor_id={pacific}&desde=2026-04-01")
+        assert len(re.search(r'points="([^"]+)"', r.text).group(1).split()) == 2
+        r = c.get("/compras/panel?producto_id=1&desde=2026-06-01")
+        assert "Hacen falta al menos 2 compras" in r.text
+
+
+def test_unir_desde_la_pagina():
+    with cliente() as c:
+        nuevo_producto(c, "Pistola de calor", cantidad="2", costo="80000")
+        nuevo_producto(c, "PISTOLA CALOR XQ", cantidad="3", costo="120000")
+        r = c.get("/productos/2/editar")
+        assert "¿Este producto ya existía con otro nombre?" in r.text
+        r = c.post("/productos/2/unir", data={"destino_id": "1"})
+        assert "la compra pasó a «Pistola de calor». Ahora hay 5" in r.text
+        assert c.get("/productos/2/editar").url.path == "/productos"
+        r = c.post("/productos/1/unir", data={"destino_id": ""})
+        assert "Elegí de la lista" in r.text
+
+
+def test_menu_y_compras_sin_botones_quitados():
+    with cliente() as c:
+        r = c.get("/compras")
+        assert "Nuevo producto</span>" not in r.text and "Imprimir</button>" not in r.text
+        assert "✨ Nuevo producto" in c.get("/productos").text
 
 
 def test_notificaciones_con_badge():

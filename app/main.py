@@ -17,7 +17,8 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import codigos, config, db, etiquetas_pdf, exportar, inventario as inv
+from app import codigos, config, db, etiquetas_pdf, exportar, graficos, impresora, inventario as inv
+from app.etiqueta_diseno import TAMANOS
 
 log = logging.getLogger(__name__)
 CARPETA = config.RAIZ / "app"
@@ -231,8 +232,10 @@ def producto_editar(request: Request, producto_id: int):
         if not producto:
             avisar(request, "Ese producto no existe.", "error")
             return ir("/productos")
+        otros = [x for x in inv.listar_productos(con) if x["id"] != producto_id]
         return pagina(request, "producto_editar.html", p=producto,
-                      categorias=inv.categorias(con), proveedores=inv.proveedores(con))
+                      categorias=inv.categorias(con), proveedores=inv.proveedores(con),
+                      productos_json=opciones_productos(otros))
 
 
 @app.post("/productos/{producto_id}/editar")
@@ -257,6 +260,22 @@ async def producto_editar_guardar(
         return ir(f"/productos/{producto_id}/editar")
     avisar(request, "✅ Cambios guardados.")
     return ir(f"/productos#p{producto_id}")
+
+
+@app.post("/productos/{producto_id}/unir")
+def producto_unir(request: Request, producto_id: int, destino_id: str = Form("")):
+    try:
+        with db.conexion() as con:
+            if not destino_id.isdigit():
+                raise inv.ErrorNegocio("Elegí de la lista el producto correcto.")
+            r = inv.unir_productos(con, producto_id, int(destino_id))
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir(f"/productos/{producto_id}/editar#unir")
+    avisar(request, f"✅ Listo: la compra pasó a «{r['nombre']}». Ahora hay {inv.cantidad_txt(r['stock'])} "
+                    f"en stock. Se borró el producto repetido ({r['borrado']}) y la próxima factura "
+                    "con ese nombre se va a reconocer sola.")
+    return ir(f"/productos/{destino_id}/editar")
 
 
 @app.post("/productos/{producto_id}/activo")
@@ -303,6 +322,7 @@ def compras_panel(request: Request):
         por_proveedor[f["proveedor"] or "Sin proveedor"] = por_proveedor.get(f["proveedor"] or "Sin proveedor", 0) + f["costo_total"]
         por_mes[f["fecha"][:7]] = por_mes.get(f["fecha"][:7], 0) + f["costo_total"]
     elegido = next((p for p in productos if str(p["id"]) == filtros["producto_id"]), None)
+    puntos = graficos.puntos_de_compras(filas) if elegido else []
     return pagina(
         request, "compras_panel.html", filas=filas, filtros=filtros, proveedores=proveedores,
         productos_json=opciones_productos(productos), producto_elegido=elegido,
@@ -312,6 +332,7 @@ def compras_panel(request: Request):
         por_proveedor=sorted(por_proveedor.items(), key=lambda x: -x[1]),
         por_mes=sorted(por_mes.items()),
         consulta=str(request.query_params),
+        grafico_costos=graficos.linea_costos(puntos), resumen_costos=graficos.resumen_costos(puntos),
     )
 
 
@@ -417,13 +438,42 @@ async def api_cliente_nuevo(request: Request):
 
 # ---------------------------------------------------------------- etiquetas con código de barra
 
+def tamano_etiqueta(con) -> str:
+    return etiquetas_pdf.tamano_elegido(con)
+
+
 @app.get("/etiquetas", response_class=HTMLResponse)
 def etiquetas(request: Request, producto_id: str = ""):
     with db.conexion() as con:
         productos = inv.listar_productos(con, solo_activos=True)
         elegido = next((p for p in productos if str(p["id"]) == producto_id), None)
+        ejemplo = elegido or next(iter(productos), None)
         return pagina(request, "etiquetas.html", facturas=inv.listar_facturas(con),
-                      productos_json=opciones_productos(productos), elegido=elegido)
+                      productos_json=opciones_productos(productos), elegido=elegido, ejemplo=ejemplo,
+                      tamanos=TAMANOS, tamano=tamano_etiqueta(con),
+                      impresora=impresora.configurada(), impresora_nombre=config.IMPRESORA_NOMBRE or config.IMPRESORA_IP)
+
+
+@app.post("/etiquetas/tamano")
+def etiquetas_tamano(request: Request, tamano: str = Form(""), producto_id: str = Form("")):
+    if tamano in TAMANOS:
+        with db.conexion() as con:
+            inv.guardar_ajuste(con, "etiqueta_tamano", tamano)
+        ancho, alto = TAMANOS[tamano]
+        avisar(request, f"✅ Tamaño de etiqueta: {ancho} × {alto} mm.")
+    return ir(f"/etiquetas?producto_id={producto_id}" if producto_id.isdigit() else "/etiquetas")
+
+
+@app.get("/etiquetas/vista.svg")
+def etiquetas_vista(producto_id: str = "", tamano: str = "", precio: str = ""):
+    with db.conexion() as con:
+        producto = inv.obtener_producto(con, int(producto_id)) if producto_id.isdigit() else None
+        tamano = tamano if tamano in TAMANOS else tamano_etiqueta(con)
+    if not producto:
+        producto = {"nombre_interno": "Molde vela rosa mediano", "codigo_barra": "20022001",
+                    "precio_venta": 30000, "codigo": "P-00001", "sku": "MOL-VEL-ROS-00001"}
+    return Response(etiquetas_pdf.vista_svg(producto, tamano, precio != "no"), media_type="image/svg+xml",
+                    headers={"Cache-Control": "no-store"})
 
 
 def _pdf(contenido: bytes, nombre: str) -> Response:
@@ -432,34 +482,76 @@ def _pdf(contenido: bytes, nombre: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="etiquetas-{nombre}.pdf"'})
 
 
+def _documento(lista: list, titulo: str, nombre: str, formato: str, con_precio: bool, con) -> Response:
+    if formato == "a4":
+        return _pdf(etiquetas_pdf.hoja_pdf(lista, titulo, con_precio), nombre + "-A4")
+    return _pdf(etiquetas_pdf.rollo_pdf(lista, tamano_etiqueta(con), titulo, con_precio), nombre)
+
+
+def _mandar_a_impresora(request: Request, lista: list, con) -> None:
+    n = impresora.imprimir(lista, tamano_etiqueta(con))
+    ancho, alto = TAMANOS[tamano_etiqueta(con)]
+    avisar(request, f"🖨️ Se mandaron {n} etiqueta(s) de {ancho} × {alto} mm a la impresora.")
+
+
 @app.get("/etiquetas/factura/{compra_id}.pdf")
-def etiquetas_factura(request: Request, compra_id: int):
+def etiquetas_factura(request: Request, compra_id: int, formato: str = "rollo"):
     try:
         with db.conexion() as con:
             lista, nombre = etiquetas_pdf.etiquetas_de_factura(con, compra_id)
-        return _pdf(etiquetas_pdf.hoja_pdf(lista, f"Etiquetas factura {nombre}"), nombre)
+            return _documento(lista, f"Etiquetas factura {nombre}", nombre, formato, True, con)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/etiquetas")
 
 
-@app.get("/etiquetas/producto.pdf")
-def etiquetas_producto(request: Request, producto_id: str = "", cantidad: str = "1",
-                       precio: str = ""):
+@app.post("/etiquetas/factura/{compra_id}/imprimir")
+def etiquetas_factura_imprimir(request: Request, compra_id: int):
+    try:
+        with db.conexion() as con:
+            lista, _ = etiquetas_pdf.etiquetas_de_factura(con, compra_id)
+            _mandar_a_impresora(request, lista, con)
+    except (inv.ErrorNegocio, impresora.ErrorImpresora) as exc:
+        avisar(request, f"😕 {exc}", "error")
+    return ir("/etiquetas")
+
+
+@app.post("/etiquetas/producto")
+def etiquetas_producto(request: Request, producto_id: str = Form(""), cantidad: str = Form("1"),
+                       precio: str = Form(""), accion: str = Form("pdf")):
     try:
         n = int(inv.leer_numero(cantidad, 0) or 0)
         if n <= 0:
             raise inv.ErrorNegocio("Escribí cuántas etiquetas querés (por ejemplo 10).")
         with db.conexion() as con:
             producto = inv.obtener_producto(con, int(producto_id)) if producto_id.isdigit() else None
-        if not producto:
-            raise inv.ErrorNegocio("Elegí el producto de la lista.")
-        contenido = etiquetas_pdf.hoja_pdf([producto] * n, f"Etiquetas {producto['nombre_interno']}",
-                                           con_precio=precio != "no")
-        return _pdf(contenido, producto["codigo"])
-    except inv.ErrorNegocio as exc:
-        avisar(request, str(exc), "error")
+            if not producto:
+                raise inv.ErrorNegocio("Elegí el producto de la lista.")
+            con_precio = precio != "no"
+            if accion == "imprimir":
+                impresora.enviar(impresora.tspl_etiquetas([(producto, n)], tamano_etiqueta(con), con_precio))
+                ancho, alto = TAMANOS[tamano_etiqueta(con)]
+                avisar(request, f"🖨️ Se mandaron {n} etiqueta(s) de {ancho} × {alto} mm a la impresora.")
+                return ir(f"/etiquetas?producto_id={producto_id}")
+            titulo = f"Etiquetas {producto['nombre_interno']}"
+            return _documento([producto] * n, titulo, producto["codigo"], "a4" if accion == "a4" else "rollo",
+                              con_precio, con)
+    except (inv.ErrorNegocio, impresora.ErrorImpresora) as exc:
+        avisar(request, f"😕 {exc}", "error")
         return ir(f"/etiquetas?producto_id={producto_id}")
+
+
+@app.post("/etiquetas/prueba")
+def etiquetas_prueba(request: Request):
+    try:
+        with db.conexion() as con:
+            producto = next(iter(inv.listar_productos(con, solo_activos=True)), None)
+            if not producto:
+                raise inv.ErrorNegocio("Cargá al menos un producto para imprimir la prueba.")
+            _mandar_a_impresora(request, [producto], con)
+    except (inv.ErrorNegocio, impresora.ErrorImpresora) as exc:
+        avisar(request, f"😕 {exc}", "error")
+    return ir("/etiquetas")
 
 
 # ---------------------------------------------------------------- datos auxiliares

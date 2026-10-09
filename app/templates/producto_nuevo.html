@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block titulo %}Nuevo producto{% endblock %}
 {% block contenido %}
-<h1>🏷️ Nuevo producto</h1>
+<p class="no-imprimir"><a href="/productos">← Volver a Productos y stock</a></p>
+<h1>✨ Nuevo producto</h1>
 <p class="ayuda">Completá los datos. Los que tienen <span class="obligatorio">*</span> son obligatorios. El código del producto, el SKU y el código de barra <b>se crean solos</b>.</p>
 
 <form method="post" action="/productos/nuevo" enctype="multipart/form-data" class="formulario" data-calculo-precio>
@@ -69,7 +70,7 @@
   </fieldset>
 
   <div class="botones">
-    <a class="boton grande" href="/">✖ Cancelar</a>
+    <a class="boton grande" href="/productos">✖ Cancelar</a>
     <button class="boton grande principal" type="submit">💾 Guardar</button>
   </div>
 </form>

@@ -22,6 +22,12 @@ CLAVE_ACCESO = os.getenv("CLAVE_ACCESO", "").strip()
 URL_PUBLICA = os.getenv("URL_PUBLICA", "").strip().rstrip("/")
 
 MARGEN_POR_DEFECTO = float(os.getenv("MARGEN_POR_DEFECTO", "40"))
+
+# Impresora térmica de etiquetas (Xprinter, TSC...). Con nombre: USB por el driver del sistema.
+IMPRESORA_NOMBRE = os.getenv("IMPRESORA_NOMBRE", "").strip()
+IMPRESORA_IP = os.getenv("IMPRESORA_IP", "").strip()
+ETIQUETA_TAMANO = os.getenv("ETIQUETA_TAMANO", "55x28").strip()
+ETIQUETA_SEPARACION_MM = float(os.getenv("ETIQUETA_SEPARACION_MM", "2"))
 STOCK_BAJO = float(os.getenv("STOCK_BAJO", "2"))
 
 

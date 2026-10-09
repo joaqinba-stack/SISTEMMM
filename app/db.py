@@ -104,6 +104,20 @@ CREATE TABLE IF NOT EXISTS consumos (
     costo_unitario REAL NOT NULL
 );
 
+-- Otros nombres con los que aparece un producto en las facturas (para que la IA lo reconozca).
+CREATE TABLE IF NOT EXISTS alias_productos (
+    id INTEGER PRIMARY KEY,
+    producto_id INTEGER NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+    texto TEXT NOT NULL,
+    clave TEXT NOT NULL UNIQUE
+);
+
+-- Preferencias que se recuerdan (por ejemplo el tamaño de etiqueta elegido).
+CREATE TABLE IF NOT EXISTS ajustes (
+    clave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_lotes_producto ON lotes(producto_id, fecha, id);
 CREATE INDEX IF NOT EXISTS ix_lotes_compra ON lotes(compra_id);
 """

@@ -14,10 +14,16 @@
 {% if revisar %}
 <section class="tarjeta alerta">
   <h2>🆕 Productos nuevos para revisar ({{ revisar|length }})</h2>
-  <p>Se crearon solos desde una factura. Revisá la categoría y el precio de venta y tocá <b>Guardar</b>; ahí desaparecen de esta lista.</p>
-  <ul class="lista">
+  <p>Se crearon solos desde una factura. Si está bien, revisá la categoría y el precio y tocá <b>Guardar</b>. Si en realidad es un producto que ya tenías, tocá <b>🔁 Es el mismo que…</b>.</p>
+  <ul class="lista-revisar">
     {% for p in revisar %}
-      <li><a href="/productos/{{ p.id }}/editar">✏️ {{ p.nombre_interno }}</a> <span class="suave">· {{ p.precio_venta|gs }}</span></li>
+      <li>
+        <div><b>{{ p.nombre_interno }}</b> <span class="suave">· {{ p.precio_venta|gs }} · stock {{ p.stock|cant }}</span></div>
+        <div class="botones">
+          <a class="boton chico" href="/productos/{{ p.id }}/editar">✏️ Revisar</a>
+          <a class="boton chico" href="/productos/{{ p.id }}/editar#unir">🔁 Es el mismo que…</a>
+        </div>
+      </li>
     {% endfor %}
   </ul>
 </section>

@@ -356,11 +356,37 @@
   });
 
   // Evitar doble envío (tocar dos veces "Guardar"). Las descargas (GET) no se bloquean.
-  document.querySelectorAll("form[method=post]").forEach(function (form) {
+  document.querySelectorAll("form[method=post]:not([data-descarga])").forEach(function (form) {
     form.addEventListener("submit", function (e) {
       if (e.defaultPrevented) return;
       var boton = form.querySelector("button[type=submit]");
       if (boton) setTimeout(function () { boton.disabled = true; boton.textContent = "Guardando…"; }, 0);
+    });
+  });
+
+  // Etiquetas: al elegir otro tamaño se guarda solo y se actualiza la vista previa.
+  document.querySelectorAll("[data-enviar-al-cambiar]").forEach(function (campo) {
+    campo.addEventListener("change", function () { campo.form.submit(); });
+  });
+
+  // Gráfico de costos: al pasar o tocar un punto se ve la fecha, el proveedor y el costo.
+  document.querySelectorAll(".grafico-envoltura").forEach(function (caja) {
+    var globo = caja.querySelector(".tooltip-grafico");
+    var mostrar = function (punto) {
+      var r = punto.getBoundingClientRect(), c = caja.getBoundingClientRect();
+      globo.textContent = punto.getAttribute("data-info");
+      globo.hidden = false;
+      var x = r.left - c.left + r.width / 2;
+      globo.style.left = Math.max(8, Math.min(x - globo.offsetWidth / 2, c.width - globo.offsetWidth - 8)) + "px";
+      globo.style.top = Math.max(0, r.top - c.top - globo.offsetHeight - 10) + "px";
+    };
+    caja.querySelectorAll("circle[data-info]").forEach(function (punto) {
+      ["mouseenter", "focus", "click"].forEach(function (ev) {
+        punto.addEventListener(ev, function () { mostrar(punto); });
+      });
+      ["mouseleave", "blur"].forEach(function (ev) {
+        punto.addEventListener(ev, function () { globo.hidden = true; });
+      });
     });
   });
 

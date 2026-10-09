@@ -37,6 +37,32 @@
   </div>
 </form>
 
+{% if producto_elegido %}
+<section class="tarjeta grafico-costo">
+  <h2>📈 Costo por unidad de «{{ producto_elegido.nombre_interno }}»</h2>
+  {% if resumen_costos %}
+    {% set r = resumen_costos %}
+    <div class="indicadores chicos">
+      <div class="indicador"><span>Último costo</span><b>{{ r.ultimo|gs }}</b></div>
+      <div class="indicador"><span>Cambio en el período</span>
+        <b class="{{ 'sube' if r.variacion > 0 else ('baja' if r.variacion < 0 else '') }}">
+          {% if r.variacion > 0 %}▲{% elif r.variacion < 0 %}▼{% else %}={% endif %}
+          {{ (r.variacion|abs)|gs }} <small>({{ '%+.1f'|format(r.variacion_pct)|replace('.', ',') }}%)</small></b></div>
+      <div class="indicador"><span>Más barato</span><b>{{ r.minimo|gs }}</b></div>
+      <div class="indicador"><span>Más caro</span><b>{{ r.maximo|gs }}</b></div>
+    </div>
+    {% if grafico_costos %}
+      <div class="grafico-envoltura">{{ grafico_costos|safe }}<div class="tooltip-grafico" hidden></div></div>
+      <p class="ayuda chica">Cada punto es una compra. Tocá un punto para ver la fecha, el proveedor y la factura. Los filtros de proveedor y fechas también cambian este gráfico.</p>
+    {% else %}
+      <p class="ayuda">Hay una sola compra en este período ({{ r.ultimo|gs }} por unidad). Hacen falta al menos 2 compras para ver la variación.</p>
+    {% endif %}
+  {% else %}
+    <p class="ayuda">No hay compras de este producto con esos filtros.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <div class="indicadores">
   <div class="indicador"><span>Total gastado</span><b>{{ total|gs }}</b></div>
   <div class="indicador"><span>Facturas</span><b>{{ facturas|cant }}</b></div>

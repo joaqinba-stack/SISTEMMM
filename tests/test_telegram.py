@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from PIL import Image
 
-from app import config, db, factura_ia, inventario as inv, telegram_bot as bot
+from app import config, db, factura_ia, impresora, inventario as inv, telegram_bot as bot
 
 LEIDO = {
     "es_factura": True,
@@ -118,3 +118,54 @@ def test_extraer_rechazo(monkeypatch):
         assert "otra foto" in str(exc)
     else:
         raise AssertionError("debía fallar")
+
+
+def test_corregir_renglon_en_telegram_y_aprender(monkeypatch):
+    with db.conexion() as con:
+        cortador = inv.crear_producto(con, {"nombre_interno": "Cortador de pabilo profesional",
+                                            "proveedor": "Pacific", "cantidad": 1, "costo_total": 27000})
+    monkeypatch.setattr(config, "TELEGRAM_USUARIOS_PERMITIDOS", {"111"})
+    monkeypatch.setattr(factura_ia, "extraer", AsyncMock(return_value=LEIDO))
+    monkeypatch.setattr(config, "IMPRESORA_NOMBRE", "Xprinter")
+    enviados = []
+    monkeypatch.setattr(impresora, "enviar", lambda datos: enviados.append(datos))
+
+    aviso = MagicMock(edit_text=AsyncMock())
+    archivo = MagicMock(download_as_bytearray=AsyncMock(return_value=bytearray(_foto_jpg())))
+    mensaje = MagicMock(photo=[MagicMock(get_file=AsyncMock(return_value=archivo))],
+                        reply_text=AsyncMock(return_value=aviso))
+    usuario = SimpleNamespace(id=111)
+    asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=usuario, effective_message=mensaje), None))
+    teclado = aviso.edit_text.call_args.kwargs["reply_markup"].inline_keyboard
+    clave = teclado[0][0].callback_data.split(":")[1]
+    corregir = [b.callback_data for fila in teclado[1:] for b in fila]
+    assert corregir == [f"k:{clave}:0", f"k:{clave}:1"]
+
+    contexto = SimpleNamespace(user_data={})
+    def boton(datos):
+        c = MagicMock(data=datos, answer=AsyncMock(), edit_message_text=AsyncMock(),
+                      message=MagicMock(reply_html=AsyncMock(), reply_text=AsyncMock()))
+        asyncio.run(bot.responder_boton(SimpleNamespace(effective_user=usuario, callback_query=c), contexto))
+        return c
+
+    boton(f"k:{clave}:1")  # corregir "Cortador de Pabilo"
+    assert contexto.user_data["corrigiendo"] == (clave, 1)
+    texto = MagicMock(text="cortador", reply_text=AsyncMock(), reply_html=AsyncMock())
+    asyncio.run(bot.texto_libre(SimpleNamespace(effective_user=usuario, effective_message=texto), contexto))
+    opciones = texto.reply_text.call_args.kwargs["reply_markup"].inline_keyboard
+    assert opciones[0][0].callback_data == f"p:{clave}:1:{cortador['id']}"
+
+    c = boton(opciones[0][0].callback_data)
+    assert "Cortador de pabilo profesional" in c.edit_message_text.call_args.args[0]
+    c = boton(f"g:{clave}")
+    final = c.edit_message_text.call_args
+    assert "Listo" in final.args[0]
+    imprimir = final.kwargs["reply_markup"].inline_keyboard[0][0].callback_data
+    with db.conexion() as con:
+        assert inv.stock(con, cortador["id"]) == 7  # 1 + 6 de la factura, sin crear otro producto
+        assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 2
+        assert inv.buscar_coincidencia(con, "Cortador de Pabilo", None)["id"] == cortador["id"]
+
+    c = boton(imprimir)
+    assert "mandé 12 etiqueta" in c.message.reply_text.call_args.args[0]  # 6 pistolas + 6 cortadores
+    assert enviados[0].count(b"PRINT 1,6") == 2

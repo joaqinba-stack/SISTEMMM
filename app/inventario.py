@@ -237,10 +237,16 @@ def fijar_margen(con: sqlite3.Connection, producto_id: int, margen_pct) -> int:
 
 
 def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int | None):
-    """Busca un producto parecido a la descripción de la factura. Devuelve la fila o None."""
+    """Busca un producto parecido a la descripción de la factura. Devuelve la fila o None.
+    Primero mira los nombres aprendidos (alias) de correcciones anteriores."""
     objetivo = normalizar(descripcion)
     if not objetivo:
         return None
+    aprendido = con.execute(
+        """SELECT p.* FROM alias_productos a JOIN productos p ON p.id = a.producto_id
+           WHERE a.clave = ?""", (objetivo,)).fetchone()
+    if aprendido:
+        return aprendido
     mejor, puntaje = None, 0.0
     for fila in con.execute("SELECT * FROM productos").fetchall():
         for candidato in (fila["nombre_proveedor"], fila["nombre_interno"], fila["sku"]):
@@ -254,6 +260,54 @@ def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int 
                 mejor, puntaje = fila, p
     umbral = 0.85 if prov_id else 0.92
     return mejor if puntaje >= umbral else None
+
+
+def agregar_alias(con: sqlite3.Connection, producto_id: int, texto: str) -> None:
+    """Recuerda que «texto» (como viene en una factura) es este producto."""
+    clave = normalizar(texto)
+    if not clave:
+        return
+    con.execute(
+        """INSERT INTO alias_productos (producto_id, texto, clave) VALUES (?, ?, ?)
+           ON CONFLICT(clave) DO UPDATE SET producto_id = excluded.producto_id""",
+        (producto_id, texto.strip(), clave),
+    )
+
+
+def unir_productos(con: sqlite3.Connection, origen_id: int, destino_id: int) -> dict:
+    """Corrige un producto creado por error: su compra, stock y ventas pasan al producto
+    correcto, se borra el equivocado (con su SKU y código) y se aprende su nombre."""
+    if int(origen_id) == int(destino_id):
+        raise ErrorNegocio("Elegí un producto distinto al que estás corrigiendo.")
+    origen = con.execute("SELECT * FROM productos WHERE id = ?", (origen_id,)).fetchone()
+    destino = con.execute("SELECT * FROM productos WHERE id = ?", (destino_id,)).fetchone()
+    if not origen or not destino:
+        raise ErrorNegocio("Elegí el producto correcto de la lista.")
+    con.execute("UPDATE lotes SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
+    con.execute("UPDATE venta_items SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
+    con.execute("UPDATE alias_productos SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
+    if origen["imagen"] and not destino["imagen"]:
+        con.execute("UPDATE productos SET imagen = ? WHERE id = ?", (origen["imagen"], destino_id))
+    for texto in {origen["nombre_proveedor"], origen["nombre_interno"]}:
+        if normalizar(texto) not in (normalizar(destino["nombre_interno"]), normalizar(destino["nombre_proveedor"])):
+            agregar_alias(con, destino_id, texto)
+    con.execute("DELETE FROM productos WHERE id = ?", (origen_id,))
+    return {"nombre": destino["nombre_interno"], "stock": stock(con, destino_id),
+            "borrado": origen["sku"]}
+
+
+# ---------------------------------------------------------------- ajustes
+
+def ajuste(con: sqlite3.Connection, clave: str, por_defecto: str = "") -> str:
+    fila = con.execute("SELECT valor FROM ajustes WHERE clave = ?", (clave,)).fetchone()
+    return fila[0] if fila else por_defecto
+
+
+def guardar_ajuste(con: sqlite3.Connection, clave: str, valor: str) -> None:
+    con.execute(
+        "INSERT INTO ajustes (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+        (clave, valor),
+    )
 
 
 # ---------------------------------------------------------------- compras

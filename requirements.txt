@@ -10,3 +10,4 @@ python-barcode>=0.15
 python-telegram-bot>=22,<23
 anthropic>=1.12,<2
 reportlab>=4.0
+pywin32; sys_platform == "win32"
