@@ -3,9 +3,9 @@
 Uso:  python scripts/importar_excel.py "Datos.xlsx"  [--forzar]
 
 El SKU del Excel solo se usa para unir las hojas entre sí; en el sistema cada producto queda
-con su código (P-00001) y su código de barra.
+con su código (P-00001), que también es su código de barra.
 
-- Producto: cada producto con su código de barra y precio; el "Stock disponible"
+- Producto: cada producto con su precio; el "Stock disponible"
   entra como un lote "Stock inicial" al "Costo Promedio".
 - Compras: si el SKU no está en la hoja Producto se crea el producto y la compra suma stock.
   Si ya estaba, la compra se guarda como historial (no suma, porque ya está en el stock inicial).
@@ -63,7 +63,6 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
             margen = numero(f.get("Margen %"), None)
             proveedor = (f.get("Proveedor") or "").strip()
             creado = inv.crear_producto(con, {
-                "codigo_barra": str(f.get("Codigo de barra") or "").strip(),
                 "nombre_interno": str(f["Producto"]).strip(),
                 "nombre_proveedor": str(f["Producto"]).strip(),
                 "marca": (f.get("Marca") or "").strip(),

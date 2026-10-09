@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS productos (
     id INTEGER PRIMARY KEY,
     codigo TEXT NOT NULL UNIQUE,
     sku TEXT NOT NULL UNIQUE,  -- ya no se usa: es igual al código
-    codigo_barra TEXT NOT NULL UNIQUE,
+    codigo_barra TEXT NOT NULL UNIQUE,  -- igual al código del producto
     nombre_interno TEXT NOT NULL,
     nombre_proveedor TEXT NOT NULL DEFAULT '',
     marca TEXT NOT NULL DEFAULT '',
@@ -153,6 +153,10 @@ def inicializar() -> None:
         columnas = {fila[1] for fila in con.execute("PRAGMA table_info(ventas)")}
         if "cliente_id" not in columnas:
             con.execute("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)")
+        # El código de barra es el código del producto (P-00001): se pasan los números viejos.
+        if con.execute("SELECT 1 FROM productos WHERE codigo_barra != codigo LIMIT 1").fetchone():
+            con.execute("UPDATE productos SET codigo_barra = '~' || id")
+            con.execute("UPDATE productos SET codigo_barra = codigo")
         # Ya no se usa el SKU: la columna queda igual al código del producto.
         if con.execute("SELECT 1 FROM productos WHERE sku != codigo LIMIT 1").fetchone():
             con.execute("UPDATE productos SET sku = '~' || id")

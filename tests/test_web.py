@@ -48,7 +48,7 @@ def test_flujo_completo_web():
         assert c.get("/compras/nueva").status_code in (404, 405)
 
         assert c.get("/api/stock").json()["stock"]["1"] == 6
-        assert c.get("/barra/20022001.svg").headers["content-type"].startswith("image/svg")
+        assert c.get("/barra/P-00001.svg").headers["content-type"].startswith("image/svg")
 
         r = c.post("/productos/1/editar", data={
             "nombre_interno": "Molde vela corazón P", "categoria_id": "1", "proveedor": "Super K",
@@ -140,7 +140,7 @@ def test_etiquetas_tamano_pdf_e_impresora(monkeypatch):
 
         r = c.post("/etiquetas/producto", data={"producto_id": "1", "cantidad": "25", "accion": "a4"})
         assert len(PdfReader(io.BytesIO(r.content)).pages) == 2  # 21 por hoja A4
-        assert textos_pdf(r.content).count("20022001") == 25 and "Gs. 1.400" in textos_pdf(r.content)
+        assert textos_pdf(r.content).count("P-00001") == 25 and "Gs. 1.400" in textos_pdf(r.content)
 
         r = c.post("/etiquetas/producto", data={"producto_id": "", "cantidad": "2", "accion": "pdf"})
         assert "Elegí el producto" in r.text

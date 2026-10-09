@@ -97,7 +97,7 @@ def opciones_productos(productos) -> str:
     return json_para_html([
         {"id": p["id"], "texto": p["nombre_interno"],
          "detalle": f"{p['codigo']} · {inv.guaranies(p['precio_venta'])} · hay {inv.cantidad_txt(p['stock'])}",
-         "buscar": f"{p['codigo']} {p['codigo_barra']}",
+         "buscar": p["codigo"],
          "precio": p["precio_venta"], "stock": p["stock"],
          "imagen": f"/archivo/{p['imagen']}" if p["imagen"] else ""}
         for p in productos])
@@ -486,7 +486,7 @@ def etiquetas_vista(producto_id: str = "", tamano: str = "", precio: str = ""):
         producto = inv.obtener_producto(con, int(producto_id)) if producto_id.isdigit() else None
         tamano = tamano if tamano in TAMANOS else tamano_etiqueta(con)
     if not producto:
-        producto = {"nombre_interno": "Molde vela rosa mediano", "codigo_barra": "20022001",
+        producto = {"nombre_interno": "Molde vela rosa mediano", "codigo_barra": "P-00001",
                     "precio_venta": 30000, "codigo": "P-00001"}
     return Response(etiquetas_pdf.vista_svg(producto, tamano, precio != "no"), media_type="image/svg+xml",
                     headers={"Cache-Control": "no-store"})

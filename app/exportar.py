@@ -36,14 +36,14 @@ def _libro(titulo: str, encabezados: list[str], filas: list[list], columnas_dine
 
 
 def productos(con) -> bytes:
-    encabezados = ["Código", "Código de barra", "Nombre interno", "Nombre en la factura",
+    encabezados = ["Código", "Nombre interno", "Nombre en la factura",
                    "Marca", "Categoría", "Última compra en", "Costo última compra", "Margen %",
                    "Precio venta", "En stock", "Activo"]
-    filas = [[p["codigo"], p["codigo_barra"], p["nombre_interno"], p["nombre_proveedor"],
+    filas = [[p["codigo"], p["nombre_interno"], p["nombre_proveedor"],
               p["marca"], p["categoria"], p["proveedor"], round(p["costo_ultimo"]),
               p["margen_pct"], p["precio_venta"], p["stock"], "Sí" if p["activo"] else "No"]
              for p in inv.listar_productos(con)]
-    return _libro("Productos", encabezados, filas, columnas_dinero=(8, 10))
+    return _libro("Productos", encabezados, filas, columnas_dinero=(7, 9))
 
 
 def compras(con, filtros: dict | None = None) -> bytes:

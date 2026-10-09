@@ -71,10 +71,7 @@ def diseno_etiqueta(ancho: float, alto: float, codigo_barra: str, con_precio: bo
     arriba = nombre.abajo + 0.8
 
     abajo = alto - m
-    codigo = None
-    if not corta:
-        codigo = Caja(m, abajo - 1.8, ancho - 2 * m, 1.8)
-        abajo = codigo.y - 0.6
+    codigo = None  # el código ya va debajo de las barras: no se repite
 
     alto_numero = min(max(alto * 0.07, 1.9), 2.6)
     alto_precio = min(max(alto * 0.12, 3.2), 5.5)

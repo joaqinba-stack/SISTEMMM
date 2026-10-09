@@ -4,8 +4,8 @@ Control de stock simple, pensado para que cualquiera lo pueda usar, con:
 
 - **Página web** con letra grande y botones grandes (funciona en la compu y en el celular).
 - **Bot de Telegram**: mandás la **foto de una factura** y la compra se carga sola.
-- **Códigos automáticos**: código de producto (`P-00001`) y
-  **código de barra** por categoría (Vela `2002…`, Jabón `3003…`, Yeso `4004…`, Resina `5005…`, Varios `1001…`).
+- **Códigos automáticos**: cada producto recibe su código (`P-00001`), que también es su
+  **código de barra**: es lo que se imprime en la etiqueta y lo que lee el lector.
 - **FIFO**: cada venta descuenta primero lo que se compró antes, y calcula la ganancia real.
 - **Precios por porcentaje**: el precio de venta se sugiere con +40% y el % se cambia producto por
   producto desde la tabla de productos.
@@ -45,7 +45,7 @@ Abrí el archivo `.env` con el Bloc de notas y completá los datos (ver abajo).
 python scripts/importar_excel.py "Datos_Joaquín.xlsx"
 ```
 
-- La hoja **Producto** carga los productos con su código de barra y precio (el SKU del Excel solo se usa para unir las hojas). El *Stock disponible* queda como stock inicial.
+- La hoja **Producto** carga los productos con su precio (el SKU y el código de barra viejo del Excel no se usan: el código de barra pasa a ser el código P-00001). El *Stock disponible* queda como stock inicial.
 - La hoja **Compras** queda como historial. Los productos que no estaban en la hoja Producto se crean y quedan marcados **para revisar**.
 - La hoja **Ventas** queda como historial.
 
@@ -136,7 +136,7 @@ Los datos (base de datos, fotos de productos y facturas) se guardan en la carpet
 
 - `app/main.py` contiene las rutas web (FastAPI + plantillas Jinja2).
 - `app/inventario.py` tiene las reglas: productos, compras (lotes), ventas FIFO y precios.
-- `app/codigos.py` genera el código del producto y el código de barra.
+- `app/codigos.py` genera el código del producto (que también es su código de barra).
 - `app/telegram_bot.py` y `app/factura_ia.py` son el bot y la lectura de facturas con Claude.
 - `app/db.py` define el esquema SQLite. El stock es la suma de `lotes.cantidad_restante`.
 

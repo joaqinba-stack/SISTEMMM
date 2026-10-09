@@ -4,18 +4,20 @@ from app import db, inventario as inv
 def test_codigo_y_barra_automaticos(con):
     vela = inv.categoria_id(con, "Vela")
     a = inv.crear_producto(con, {"nombre_interno": "Molde Vela Rosa", "categoria_id": vela})
-    b = inv.crear_producto(con, {"nombre_interno": "Molde Vela Rosa", "categoria_id": vela})
+    b = inv.crear_producto(con, {"nombre_interno": "Molde Vela Rosa", "categoria": "Jabón"})
     assert (a["codigo"], b["codigo"]) == ("P-00001", "P-00002")
-    assert (a["codigo_barra"], b["codigo_barra"]) == ("20022001", "20022002")
-    assert "sku" not in a  # ya no hay SKU: solo el código
-    jabon = inv.crear_producto(con, {"nombre_interno": "Molde jabón", "categoria": "Jabón"})
-    assert jabon["codigo_barra"] == "30033001"
+    # el código de barra es el mismo código del producto, sin importar la categoría
+    assert (a["codigo_barra"], b["codigo_barra"]) == ("P-00001", "P-00002")
+    assert "sku" not in a
 
 
-def test_barra_continua_numeracion_existente(con):
-    inv.crear_producto(con, {"nombre_interno": "Viejo", "categoria": "Yeso", "codigo_barra": "40044005"})
-    nuevo = inv.crear_producto(con, {"nombre_interno": "Nuevo", "categoria": "Yeso"})
-    assert nuevo["codigo_barra"] == "40044006"
+def test_bases_viejas_pasan_la_barra_al_codigo():
+    with db.conexion() as con:
+        p = inv.crear_producto(con, {"nombre_interno": "Viejo"})
+        con.execute("UPDATE productos SET codigo_barra = '20022001' WHERE id = ?", (p["id"],))
+    db.inicializar()
+    with db.conexion() as con:
+        assert con.execute("SELECT codigo_barra FROM productos").fetchone()[0] == "P-00001"
 
 
 def test_bases_viejas_pasan_el_sku_al_codigo():

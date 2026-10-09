@@ -154,9 +154,7 @@ def crear_producto(con: sqlite3.Connection, datos: dict) -> dict:
         precio = precio_sugerido(costo_unit, margen)
 
     codigo = datos.get("codigo") or codigos.nuevo_codigo_producto(con)
-    barra = str(datos.get("codigo_barra") or "").strip() or codigos.nuevo_codigo_barra(con, cat_id)
-    if con.execute("SELECT 1 FROM productos WHERE codigo_barra = ?", (barra,)).fetchone():
-        barra = codigos.nuevo_codigo_barra(con, cat_id)
+    barra = codigo  # el código de barra es el mismo código del producto (P-00001)
 
     producto_id = con.execute(
         """INSERT INTO productos (codigo, sku, codigo_barra, nombre_interno, nombre_proveedor,
