@@ -1,22 +1,5 @@
 {% extends "base.html" %}
-{% block titulo %}Editar producto
-<section class="tarjeta unir" id="unir">
-  <h2>🔁 ¿Este producto ya existía con otro nombre?</h2>
-  <p class="ayuda">Si la factura creó este producto por error, elegí acá el producto correcto. La compra y el stock pasan a ese producto, este se borra (con su SKU <b class="mono">{{ p.sku }}</b>) y la próxima factura con este nombre se reconoce sola.</p>
-  <script type="application/json" id="datos-otros">{{ productos_json|safe }}</script>
-  <form method="post" action="/productos/{{ p.id }}/unir" class="formulario sin-borde"
-        data-confirmar="¿Seguro? La compra y el stock de «{{ p.nombre_interno }}» pasan al producto elegido y este se borra.">
-    <input type="hidden" name="destino_id" id="destino-id">
-    <div class="buscador" data-buscador="#datos-otros" data-destino="#destino-id" id="buscador-unir">
-      <label for="buscar-unir">Es el mismo producto que…</label>
-      <input type="text" id="buscar-unir" placeholder="🔎 Escribí el nombre o el código del producto correcto…" autocomplete="off"
-             role="combobox" aria-expanded="false" aria-controls="lista-unir" aria-autocomplete="list">
-      <ul class="sugerencias" id="lista-unir" role="listbox" hidden></ul>
-    </div>
-    <div class="botones"><button class="boton grande principal" type="submit">🔁 Unir con ese producto</button></div>
-  </form>
-</section>
-{% endblock %}
+{% block titulo %}Editar producto{% endblock %}
 {% block contenido %}
 <h1>✏️ Editar producto</h1>
 

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Inventario{% endblock %}</title>
-  <link rel="stylesheet" href="/static/estilo.css?v=6">
+  <link rel="stylesheet" href="/static/estilo.css?v=7">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
 </head>
 <body>
-  <header class="barra no-imprimir">
+  <header class="barra-menu no-imprimir">
     <nav class="menu">
       <a href="/" class="{{ 'activo' if request.url.path == '/' }}"><span class="campana">🔔{% if cantidad_avisos %}<b class="globo" aria-label="{{ cantidad_avisos }} avisos">{{ cantidad_avisos }}</b>{% endif %}</span><span>Notificaciones</span></a>
       <a href="/productos" class="{{ 'activo' if request.url.path.startswith(('/productos', '/etiquetas')) }}">📦<span>Productos y stock</span></a>

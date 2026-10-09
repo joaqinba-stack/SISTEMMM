@@ -36,7 +36,7 @@ h2 { font-size: 1.25rem; margin: 1.2rem 0 0.6rem; }
 .solo-imprimir { display: none; }
 
 /* ---- Menú ---- */
-.barra { background: var(--verde); position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+.barra-menu { background: var(--verde); position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
 .menu { display: flex; gap: 4px; max-width: 1400px; margin: 0 auto; padding: 6px; overflow-x: auto; }
 .menu a {
   flex: 1 1 0; min-width: 90px; display: flex; flex-direction: column; align-items: center;
@@ -176,7 +176,7 @@ input[readonly] { background: #f0eee9; }
 @media print {
   html { font-size: 11pt; }
   body { background: #fff; }
-  .no-imprimir, .barra, .pie, .aviso { display: none !important; }
+  .no-imprimir, .barra-menu, .pie, .aviso { display: none !important; }
   .solo-imprimir { display: inline; }
   .contenido { max-width: none; padding: 0; }
   .tabla-envoltura { border: 0; overflow: visible; }

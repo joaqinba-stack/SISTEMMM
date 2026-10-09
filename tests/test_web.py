@@ -196,3 +196,12 @@ def test_pide_clave(monkeypatch):
         r = c.post("/login", data={"clave": "1234"})
         assert r.url.path == "/"
         assert c.get("/productos").url.path == "/productos"
+
+
+def test_editar_sin_duplicados_y_menu_fijo():
+    with cliente() as c:
+        nuevo_producto(c, "Molde A", cantidad="1", costo="1000")
+        r = c.get("/productos/1/editar")
+        assert "<title>Editar producto</title>" in r.text
+        assert r.text.count('id="buscador-unir"') == 1
+        assert '<header class="barra-menu no-imprimir">' in r.text
