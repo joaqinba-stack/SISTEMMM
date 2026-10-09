@@ -158,7 +158,7 @@ def test_unir_producto_creado_por_error(con):
                                     "cantidad": 3, "costo_total": 120000, "revisar": True})
     inv.registrar_venta(con, [{"producto_id": malo["id"], "cantidad": 1}])
     r = inv.unir_productos(con, malo["id"], bueno["id"])
-    assert r["stock"] == 4 and r["borrado"] == malo["sku"]
+    assert r["stock"] == 4 and r["borrado"] == malo["codigo"]
     assert inv.obtener_producto(con, malo["id"]) is None
     assert {c["nombre_interno"] for c in inv.listar_compras(con)} == {"Pistola de calor"}
     assert inv.ultimas_ventas(con)[0]["items"][0]["nombre_interno"] == "Pistola de calor"
@@ -178,3 +178,12 @@ def test_precio_a_mano_calcula_el_porcentaje(con):
     assert inv.obtener_producto(con, sin_costo["id"])["precio_venta"] == 9000
     with pytest.raises(inv.ErrorNegocio):
         inv.fijar_precio(con, p["id"], "")
+
+
+def test_parecido_sin_importar_proveedor_ni_orden(con):
+    assert inv.parecido("Balanza digital 10kg", "BALANZA 10KG DIGITAL") >= 0.86
+    assert inv.parecido("Molde vela rosa", "Molde vela corazón") < 0.86
+    assert inv.parecido("Balanza digital 10kg", "Balanza digital 2kg") < 0.86
+    p = inv.crear_producto(con, {"nombre_interno": "Pistola de calor 300W", "proveedor": "Pacific"})
+    otro_prov = inv.proveedor_id(con, "Super K")
+    assert inv.buscar_coincidencia(con, "PISTOLA DE CALOR 300W", otro_prov)["id"] == p["id"]

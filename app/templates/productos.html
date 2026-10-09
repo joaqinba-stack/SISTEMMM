@@ -11,7 +11,7 @@
 </div>
 
 <div class="filtros no-imprimir">
-  <input type="search" placeholder="🔎 Buscar por nombre, código o proveedor…" data-buscar="#tabla-productos">
+  <input type="search" placeholder="🔎 Buscar por nombre o código…" data-buscar="#tabla-productos">
   <label class="casilla"><input type="checkbox" data-mostrar-inactivos="#tabla-productos"> Mostrar inactivos</label>
 </div>
 
@@ -22,8 +22,8 @@
 <table class="tabla" id="tabla-productos">
   <thead>
     <tr>
-      <th>Imagen</th><th>SKU</th><th>Código</th><th>Código de barra</th>
-      <th>Nombre interno</th><th>Nombre proveedor</th><th>Proveedor</th>
+      <th>Imagen</th><th>Código</th>
+      <th>Nombre interno</th><th>Nombre en la factura</th><th>Última compra en</th>
       <th class="num">Ganancia %</th><th class="num">Precio venta</th><th class="num">En stock</th><th>Activo</th>
       <th class="no-imprimir">Editar</th>
     </tr>
@@ -34,12 +34,10 @@
       <td data-titulo="Imagen">
         {% if p.imagen %}<img class="miniatura" src="/archivo/{{ p.imagen }}" alt="" loading="lazy">{% else %}<span class="sin-foto">📷</span>{% endif %}
       </td>
-      <td data-titulo="SKU" class="mono">{{ p.sku }}</td>
       <td data-titulo="Código" class="mono">{{ p.codigo }}</td>
-      <td data-titulo="Código de barra"><img class="barra-img" src="/barra/{{ p.codigo_barra }}.svg" alt="{{ p.codigo_barra }}" loading="lazy"></td>
       <td data-titulo="Nombre interno"><div><b>{{ p.nombre_interno }}</b>{% if p.revisar %} <span class="etiqueta">🆕 revisar</span>{% endif %}<div class="suave chica">{{ p.categoria }}</div></div></td>
-      <td data-titulo="Nombre proveedor">{{ p.nombre_proveedor }}</td>
-      <td data-titulo="Proveedor">{{ p.proveedor }}</td>
+      <td data-titulo="Nombre en la factura">{{ p.nombre_proveedor }}</td>
+      <td data-titulo="Última compra en">{{ p.proveedor or '—' }}</td>
       <td data-titulo="Ganancia %" class="num">
         <form method="post" action="/productos/{{ p.id }}/precio" id="fp{{ p.id }}" class="precio-form" data-costo="{{ p.costo_ultimo }}">
           <input type="hidden" name="origen" value="">
@@ -65,7 +63,7 @@
       <td class="no-imprimir"><a class="boton chico" href="/productos/{{ p.id }}/editar">✏️ Editar</a></td>
     </tr>
   {% else %}
-    <tr><td colspan="12">Todavía no hay productos. Tocá <a href="/productos/nuevo">✨ Nuevo producto</a> para cargar el primero.</td></tr>
+    <tr><td colspan="10">Todavía no hay productos. Tocá <a href="/productos/nuevo">✨ Nuevo producto</a> para cargar el primero.</td></tr>
   {% endfor %}
   </tbody>
 </table>

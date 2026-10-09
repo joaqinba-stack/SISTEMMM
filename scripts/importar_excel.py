@@ -2,7 +2,10 @@
 
 Uso:  python scripts/importar_excel.py "Datos.xlsx"  [--forzar]
 
-- Producto: cada producto con su SKU, código de barra y precio; el "Stock disponible"
+El SKU del Excel solo se usa para unir las hojas entre sí; en el sistema cada producto queda
+con su código (P-00001) y su código de barra.
+
+- Producto: cada producto con su código de barra y precio; el "Stock disponible"
   entra como un lote "Stock inicial" al "Costo Promedio".
 - Compras: si el SKU no está en la hoja Producto se crea el producto y la compra suma stock.
   Si ya estaba, la compra se guarda como historial (no suma, porque ya está en el stock inicial).
@@ -48,18 +51,18 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
 
         # ---------------- Producto
         desde_hoja_producto: set[str] = set()
+        por_sku: dict[str, int] = {}  # SKU del Excel -> producto del sistema
         por_proveedor: dict[str, list] = {}
         for f in filas_de(libro["Producto"]):
             sku = (f.get("SKU") or "").strip()
             if not sku or not f.get("Producto"):
                 continue
-            if con.execute("SELECT 1 FROM productos WHERE sku = ?", (sku,)).fetchone():
-                avisos.append(f"Producto {sku}: ya existía, no se volvió a cargar.")
+            if sku in por_sku:
+                avisos.append(f"Producto {sku}: estaba repetido en la hoja, se cargó una sola vez.")
                 continue
             margen = numero(f.get("Margen %"), None)
             proveedor = (f.get("Proveedor") or "").strip()
             creado = inv.crear_producto(con, {
-                "sku": sku,
                 "codigo_barra": str(f.get("Codigo de barra") or "").strip(),
                 "nombre_interno": str(f["Producto"]).strip(),
                 "nombre_proveedor": str(f["Producto"]).strip(),
@@ -72,6 +75,7 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
                 "activo": str(f.get("Activo") or "Si").strip().lower().startswith("s"),
             })
             desde_hoja_producto.add(sku)
+            por_sku[sku] = creado["id"]
             disponible = numero(f.get("Stock disponible"))
             if disponible > 0:
                 por_proveedor.setdefault(proveedor, []).append({
@@ -94,21 +98,19 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
             if cantidad <= 0:
                 avisos.append(f"Compra {sku}: cantidad vacía, se saltó.")
                 continue
-            fila = con.execute("SELECT id FROM productos WHERE sku = ?", (sku,)).fetchone()
-            if fila and sku in desde_hoja_producto:
+            if sku in desde_hoja_producto:
                 restante = 0  # ya está contada en el stock inicial
-                producto_id = fila["id"]
+                producto_id = por_sku[sku]
             else:
-                if not fila:
-                    producto_id = inv.crear_producto(con, {
-                        "sku": sku, "nombre_interno": str(f.get("Producto") or sku).strip(),
-                        "categoria": "Varios", "proveedor": f.get("Proveedor") or "",
+                if sku not in por_sku:
+                    por_sku[sku] = inv.crear_producto(con, {
+                        "nombre_interno": str(f.get("Producto") or sku).strip(),
+                        "categoria": "Varios",
                         "costo_unitario": costo_total / cantidad, "revisar": True,
                     })["id"]
                     avisos.append(f"Compra {sku}: el producto no estaba en la hoja Producto; "
                                   "se creó en categoría Varios (marcado para revisar).")
-                else:
-                    producto_id = fila["id"]
+                producto_id = por_sku[sku]
                 restante = cantidad
             inv.registrar_compra(con, f.get("Fecha"), str(f.get("Factura") or ""),
                                  f.get("Proveedor") or "",
@@ -122,7 +124,7 @@ def importar(ruta: str, forzar: bool = False) -> list[str]:
                 sku = (f.get("SKU") or "").strip()
                 if not sku:
                     continue
-                fila = con.execute("SELECT * FROM productos WHERE sku = ?", (sku,)).fetchone()
+                fila = con.execute("SELECT * FROM productos WHERE id = ?", (por_sku.get(sku),)).fetchone()
                 if not fila:
                     avisos.append(f"Venta {sku} ({f.get('Producto')}): el producto no existe, "
                                   "no se cargó.")

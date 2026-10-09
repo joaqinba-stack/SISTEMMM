@@ -3,7 +3,7 @@
 {% block contenido %}
 <p class="no-imprimir"><a href="/productos">← Volver a Productos y stock</a></p>
 <h1>✨ Nuevo producto</h1>
-<p class="ayuda">Completá los datos. Los que tienen <span class="obligatorio">*</span> son obligatorios. El código del producto, el SKU y el código de barra <b>se crean solos</b>.</p>
+<p class="ayuda">Completá los datos. Los que tienen <span class="obligatorio">*</span> son obligatorios. El código del producto y el código de barra <b>se crean solos</b>.</p>
 
 <form method="post" action="/productos/nuevo" enctype="multipart/form-data" class="formulario" data-calculo-precio>
   <div class="dato-fijo">Código del producto: <b>{{ proximo_codigo }}</b> <span class="suave">(automático)</span></div>

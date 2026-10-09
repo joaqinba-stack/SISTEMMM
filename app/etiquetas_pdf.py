@@ -86,7 +86,7 @@ def dibujar(pintor, producto, con_precio: bool = True) -> None:
         pintor.texto(d.precio, texto, _ajustar(texto, _tamano_letra(d.precio.alto), d.precio.ancho, True), True,
                      "derecha" if d.precio_a_la_derecha else "centro")
     if d.codigo:
-        texto = f"{producto['codigo']} · {producto['sku']}"
+        texto = producto["codigo"]
         pintor.texto(d.codigo, texto, _ajustar(texto, _tamano_letra(d.codigo.alto), d.codigo.ancho, False),
                      False, "centro")
 

@@ -35,7 +35,10 @@ def test_flujo_completo_web():
 
         r = nuevo_producto(c)
         assert r.status_code == 200 and "Producto guardado" in r.text
-        assert "MOL-VEL-COR-00001" in r.text and "20022001" in r.text
+        assert "P-00001" in r.text
+        # la tabla ya no muestra SKU ni código de barra, y el proveedor es el de la última compra
+        tabla = r.text.split('id="tabla-productos"')[1]
+        assert "SKU" not in tabla and "/barra/" not in tabla and "Última compra en" in tabla
         assert 'value="12260"' in r.text  # 8.757 + 40 %
         assert "Imprimir lista" not in r.text and "Cambiar precios por porcentaje" not in r.text
 

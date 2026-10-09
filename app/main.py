@@ -97,7 +97,7 @@ def opciones_productos(productos) -> str:
     return json_para_html([
         {"id": p["id"], "texto": p["nombre_interno"],
          "detalle": f"{p['codigo']} · {inv.guaranies(p['precio_venta'])} · hay {inv.cantidad_txt(p['stock'])}",
-         "buscar": f"{p['codigo']} {p['sku']} {p['codigo_barra']}",
+         "buscar": f"{p['codigo']} {p['codigo_barra']}",
          "precio": p["precio_venta"], "stock": p["stock"]}
         for p in productos])
 
@@ -257,7 +257,7 @@ def producto_editar(request: Request, producto_id: int):
 async def producto_editar_guardar(
     request: Request, producto_id: int,
     nombre_interno: str = Form(""), nombre_proveedor: str = Form(""), marca: str = Form(""),
-    categoria_id: int = Form(...), proveedor: str = Form(""), margen_pct: str = Form(""),
+    categoria_id: int = Form(...), margen_pct: str = Form(""),
     precio_venta: str = Form(""), activo: str = Form(""),
     imagen: UploadFile | None = File(None),
 ):
@@ -266,7 +266,7 @@ async def producto_editar_guardar(
         with db.conexion() as con:
             inv.actualizar_producto(con, producto_id, {
                 "nombre_interno": nombre_interno, "nombre_proveedor": nombre_proveedor,
-                "marca": marca, "categoria_id": categoria_id, "proveedor": proveedor,
+                "marca": marca, "categoria_id": categoria_id,
                 "margen_pct": margen_pct, "precio_venta": precio_venta,
                 "activo": activo == "1", "imagen": ruta_imagen,
             })
@@ -486,7 +486,7 @@ def etiquetas_vista(producto_id: str = "", tamano: str = "", precio: str = ""):
         tamano = tamano if tamano in TAMANOS else tamano_etiqueta(con)
     if not producto:
         producto = {"nombre_interno": "Molde vela rosa mediano", "codigo_barra": "20022001",
-                    "precio_venta": 30000, "codigo": "P-00001", "sku": "MOL-VEL-ROS-00001"}
+                    "precio_venta": 30000, "codigo": "P-00001"}
     return Response(etiquetas_pdf.vista_svg(producto, tamano, precio != "no"), media_type="image/svg+xml",
                     headers={"Cache-Control": "no-store"})
 

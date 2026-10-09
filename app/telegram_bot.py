@@ -37,13 +37,19 @@ def preparar_compra(datos: dict, foto: str | None) -> dict:
         fila = con.execute("SELECT id FROM proveedores WHERE clave = ?", (clave,)).fetchone()
         prov_id = fila[0] if fila else None
         repetida = bool(prov_id and inv.compra_existente(con, prov_id, datos["nro_factura"]))
+        por_codigo = {f["codigo"]: f for f in con.execute("SELECT * FROM productos").fetchall()}
         items = []
         for item in datos["items"]:
-            producto = inv.buscar_coincidencia(con, item["descripcion"], prov_id)
+            # 1) lo que reconoció la IA mirando la lista de productos; 2) nombres parecidos o aprendidos
+            producto = por_codigo.get(item.get("codigo_existente", ""))
+            aprender = bool(producto) and inv.normalizar(item["descripcion"]) not in (
+                inv.normalizar(producto["nombre_interno"]), inv.normalizar(producto["nombre_proveedor"]))
+            producto = producto or inv.buscar_coincidencia(con, item["descripcion"])
             items.append({
                 **item,
                 "producto_id": producto["id"] if producto else None,
                 "producto_nombre": producto["nombre_interno"] if producto else item["descripcion"],
+                "aprender": aprender,
             })
     return {**datos, "items": items, "foto": foto, "repetida": repetida}
 
@@ -121,7 +127,7 @@ def opciones_correccion(texto: str, limite: int = 6) -> list:
         productos = inv.listar_productos(con)
     def puntaje(p):
         nombre = inv.normalizar(f"{p['nombre_interno']} {p['nombre_proveedor']}")
-        contiene = all(palabra in f"{nombre} {inv.normalizar(p['codigo'])} {inv.normalizar(p['sku'])}"
+        contiene = all(palabra in f"{nombre} {inv.normalizar(p['codigo'])}"
                        for palabra in q.split())
         return (contiene, difflib.SequenceMatcher(None, q, inv.normalizar(p["nombre_interno"])).ratio())
     ordenados = sorted(productos, key=puntaje, reverse=True)
@@ -155,7 +161,7 @@ def texto_stock(busqueda: str) -> str:
     busqueda = inv.normalizar(busqueda)
     with db.conexion() as con:
         filas = [p for p in inv.listar_productos(con, solo_activos=True)
-                 if busqueda in inv.normalizar(f"{p['nombre_interno']} {p['codigo']} {p['sku']}")]
+                 if busqueda in inv.normalizar(f"{p['nombre_interno']} {p['codigo']}")]
     if not filas:
         return "No encontré productos con ese nombre. 🤔"
     lineas = [f"📦 <b>{len(filas)} producto(s):</b>", ""]
@@ -229,8 +235,10 @@ async def recibir_factura(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     carpeta.mkdir(parents=True, exist_ok=True)
     (carpeta / nombre_foto).write_bytes(contenido)
 
+    with db.conexion() as con:
+        catalogo = [(p["codigo"], p["nombre_interno"]) for p in inv.listar_productos(con)]
     try:
-        datos = await factura_ia.extraer(contenido, media_type)
+        datos = await factura_ia.extraer(contenido, media_type, catalogo)
     except factura_ia.ErrorLectura as exc:
         await aviso.edit_text(f"😕 {exc}")
         return

@@ -143,7 +143,6 @@ def crear_producto(con: sqlite3.Connection, datos: dict) -> dict:
     if not nombre:
         raise ErrorNegocio("Falta escribir el nombre del producto.")
     cat_id = datos.get("categoria_id") or categoria_id(con, datos.get("categoria", "Varios"))
-    prov_id = proveedor_id(con, datos.get("proveedor", ""))
     cantidad = leer_numero(datos.get("cantidad"), 0) or 0
     costo_total = leer_numero(datos.get("costo_total"), 0) or 0
     if cantidad < 0 or costo_total < 0:
@@ -155,9 +154,6 @@ def crear_producto(con: sqlite3.Connection, datos: dict) -> dict:
         precio = precio_sugerido(costo_unit, margen)
 
     codigo = datos.get("codigo") or codigos.nuevo_codigo_producto(con)
-    sku = datos.get("sku") or codigos.nuevo_sku(con, nombre)
-    if con.execute("SELECT 1 FROM productos WHERE sku = ?", (sku,)).fetchone():
-        sku = codigos.nuevo_sku(con, nombre)
     barra = str(datos.get("codigo_barra") or "").strip() or codigos.nuevo_codigo_barra(con, cat_id)
     if con.execute("SELECT 1 FROM productos WHERE codigo_barra = ?", (barra,)).fetchone():
         barra = codigos.nuevo_codigo_barra(con, cat_id)
@@ -165,12 +161,12 @@ def crear_producto(con: sqlite3.Connection, datos: dict) -> dict:
     producto_id = con.execute(
         """INSERT INTO productos (codigo, sku, codigo_barra, nombre_interno, nombre_proveedor,
                marca, categoria_id, proveedor_id, imagen, margen_pct, precio_venta, activo, revisar)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)""",
         (
-            codigo, sku, barra, nombre,
+            codigo, codigo, barra, nombre,
             (datos.get("nombre_proveedor") or nombre).strip(),
             (datos.get("marca") or "").strip(),
-            cat_id, prov_id, datos.get("imagen"),
+            cat_id, datos.get("imagen"),
             margen, int(round(precio)),
             1 if datos.get("activo", True) else 0,
             1 if datos.get("revisar") else 0,
@@ -187,7 +183,7 @@ def crear_producto(con: sqlite3.Connection, datos: dict) -> dict:
             foto=datos.get("foto_factura"),
             origen=datos.get("origen", "web"),
         )
-    return {"id": producto_id, "codigo": codigo, "sku": sku, "codigo_barra": barra}
+    return {"id": producto_id, "codigo": codigo, "codigo_barra": barra}
 
 
 def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) -> None:
@@ -201,7 +197,7 @@ def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) 
     precio = leer_numero(datos.get("precio_venta"), actual["precio_venta"])
     con.execute(
         """UPDATE productos SET nombre_interno = ?, nombre_proveedor = ?, marca = ?,
-               categoria_id = ?, proveedor_id = ?, imagen = ?, margen_pct = ?, precio_venta = ?,
+               categoria_id = ?, imagen = ?, margen_pct = ?, precio_venta = ?,
                activo = ?, revisar = 0
            WHERE id = ?""",
         (
@@ -209,7 +205,6 @@ def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) 
             (datos.get("nombre_proveedor") or "").strip(),
             (datos.get("marca") or "").strip(),
             int(datos.get("categoria_id") or actual["categoria_id"]),
-            proveedor_id(con, datos.get("proveedor", "")),
             datos.get("imagen") or actual["imagen"],
             margen,
             int(round(precio or 0)),
@@ -252,8 +247,34 @@ def fijar_precio(con: sqlite3.Connection, producto_id: int, precio_venta) -> flo
     return margen
 
 
-def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int | None):
-    """Busca un producto parecido a la descripción de la factura. Devuelve la fila o None.
+PALABRAS_VACIAS = {"de", "del", "la", "el", "los", "las", "para", "con", "y", "x", "en", "a", "al", "por"}
+
+
+def _palabras(texto: str) -> set[str]:
+    return {w for w in re.split(r"[^a-z0-9]+", normalizar(texto)) if len(w) > 1 and w not in PALABRAS_VACIAS}
+
+
+def parecido(a: str, b: str) -> float:
+    """Qué tan parecidos son dos nombres de producto (0 a 1), sin importar el orden de las palabras."""
+    a_n, b_n = normalizar(a), normalizar(b)
+    if not a_n or not b_n:
+        return 0.0
+    if a_n == b_n:
+        return 1.0
+    pa, pb = _palabras(a), _palabras(b)
+    # Si las medidas o números no coinciden (10kg y 2kg, 300W y 500W) son productos distintos.
+    medidas_a = {w for w in pa if any(c.isdigit() for c in w)}
+    medidas_b = {w for w in pb if any(c.isdigit() for c in w)}
+    if medidas_a and medidas_b and medidas_a != medidas_b:
+        return 0.5
+    jaccard = len(pa & pb) / len(pa | pb) if pa and pb else 0.0
+    orden = difflib.SequenceMatcher(None, " ".join(sorted(pa)), " ".join(sorted(pb))).ratio()
+    return max(difflib.SequenceMatcher(None, a_n, b_n).ratio(), jaccard, orden)
+
+
+def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int | None = None):
+    """Busca el producto que corresponde a un renglón de factura. Devuelve la fila o None.
+    No importa el proveedor: el mismo producto se puede comprar en distintos lugares.
     Primero mira los nombres aprendidos (alias) de correcciones anteriores."""
     objetivo = normalizar(descripcion)
     if not objetivo:
@@ -263,19 +284,16 @@ def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int 
            WHERE a.clave = ?""", (objetivo,)).fetchone()
     if aprendido:
         return aprendido
+    alias = {}
+    for fila in con.execute("SELECT producto_id, texto FROM alias_productos").fetchall():
+        alias.setdefault(fila["producto_id"], []).append(fila["texto"])
     mejor, puntaje = None, 0.0
     for fila in con.execute("SELECT * FROM productos").fetchall():
-        for candidato in (fila["nombre_proveedor"], fila["nombre_interno"], fila["sku"]):
-            texto = normalizar(candidato)
-            if not texto:
-                continue
-            p = 1.0 if texto == objetivo else difflib.SequenceMatcher(None, objetivo, texto).ratio()
-            if prov_id and fila["proveedor_id"] == prov_id:
-                p += 0.05  # pequeño empujón si es del mismo proveedor
+        for candidato in (fila["nombre_proveedor"], fila["nombre_interno"], fila["codigo"], *alias.get(fila["id"], [])):
+            p = parecido(descripcion, candidato or "")
             if p > puntaje:
                 mejor, puntaje = fila, p
-    umbral = 0.85 if prov_id else 0.92
-    return mejor if puntaje >= umbral else None
+    return mejor if puntaje >= 0.86 else None
 
 
 def agregar_alias(con: sqlite3.Connection, producto_id: int, texto: str) -> None:
@@ -292,7 +310,7 @@ def agregar_alias(con: sqlite3.Connection, producto_id: int, texto: str) -> None
 
 def unir_productos(con: sqlite3.Connection, origen_id: int, destino_id: int) -> dict:
     """Corrige un producto creado por error: su compra, stock y ventas pasan al producto
-    correcto, se borra el equivocado (con su SKU y código) y se aprende su nombre."""
+    correcto, se borra el equivocado (con su código) y se aprende su nombre."""
     if int(origen_id) == int(destino_id):
         raise ErrorNegocio("Elegí un producto distinto al que estás corrigiendo.")
     origen = con.execute("SELECT * FROM productos WHERE id = ?", (origen_id,)).fetchone()
@@ -309,7 +327,7 @@ def unir_productos(con: sqlite3.Connection, origen_id: int, destino_id: int) -> 
             agregar_alias(con, destino_id, texto)
     con.execute("DELETE FROM productos WHERE id = ?", (origen_id,))
     return {"nombre": destino["nombre_interno"], "stock": stock(con, destino_id),
-            "borrado": origen["sku"]}
+            "borrado": origen["codigo"]}
 
 
 # ---------------------------------------------------------------- ajustes
@@ -532,13 +550,15 @@ def notificaciones(con) -> dict:
 # ---------------------------------------------------------------- listados
 
 SQL_PRODUCTOS = """
-SELECT p.*, c.nombre AS categoria, COALESCE(pr.nombre, '') AS proveedor,
+SELECT p.*, c.nombre AS categoria,
+       COALESCE((SELECT pr.nombre FROM lotes l JOIN compras co ON co.id = l.compra_id
+                 JOIN proveedores pr ON pr.id = co.proveedor_id
+                 WHERE l.producto_id = p.id ORDER BY l.fecha DESC, l.id DESC LIMIT 1), '') AS proveedor,
        COALESCE((SELECT SUM(l.cantidad_restante) FROM lotes l WHERE l.producto_id = p.id), 0) AS stock,
        COALESCE((SELECT l.costo_unitario FROM lotes l WHERE l.producto_id = p.id AND l.cantidad > 0
                  ORDER BY l.fecha DESC, l.id DESC LIMIT 1), 0) AS costo_ultimo
 FROM productos p
 JOIN categorias c ON c.id = p.categoria_id
-LEFT JOIN proveedores pr ON pr.id = p.proveedor_id
 """
 
 
@@ -602,7 +622,7 @@ def listar_ventas(con):
            vi.cantidad, vi.precio_unit, vi.costo_fifo,
            vi.cantidad * vi.precio_unit AS total,
            vi.cantidad * vi.precio_unit - vi.costo_fifo AS ganancia,
-           p.codigo, p.sku, p.nombre_interno
+           p.codigo, p.nombre_interno
     FROM ventas v
     JOIN venta_items vi ON vi.venta_id = v.id
     JOIN productos p ON p.id = vi.producto_id

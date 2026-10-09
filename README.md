@@ -4,7 +4,7 @@ Control de stock simple, pensado para que cualquiera lo pueda usar, con:
 
 - **Página web** con letra grande y botones grandes (funciona en la compu y en el celular).
 - **Bot de Telegram**: mandás la **foto de una factura** y la compra se carga sola.
-- **Códigos automáticos**: código de producto (`P-00001`), **SKU** (`MOL-VEL-ROS-00001`) y
+- **Códigos automáticos**: código de producto (`P-00001`) y
   **código de barra** por categoría (Vela `2002…`, Jabón `3003…`, Yeso `4004…`, Resina `5005…`, Varios `1001…`).
 - **FIFO**: cada venta descuenta primero lo que se compró antes, y calcula la ganancia real.
 - **Precios por porcentaje**: el precio de venta se sugiere con +40% y el % se cambia producto por
@@ -24,7 +24,7 @@ Control de stock simple, pensado para que cualquiera lo pueda usar, con:
 | Pantalla | Qué hace |
 |---|---|
 | 🔔 Notificaciones | Productos con poco stock y productos nuevos para revisar. Queda vacía cuando todo está atendido |
-| 📦 Productos y stock | SKU, código, código de barra, foto, nombres, proveedor, % de ganancia por producto, precio, stock, activo sí/no. ✨ Nuevo producto, Editar (y «Es el mismo que…»), Excel, imprimir códigos de barra |
+| 📦 Productos y stock | Código, foto, nombres, dónde fue la última compra, % de ganancia y precio de venta (uno calcula el otro), stock, activo sí/no. ✨ Nuevo producto, Editar (y «Es el mismo que…»), Excel, imprimir códigos de barra |
 | 🧾 Compras | Código, factura, proveedor, producto, precio unitario y total. Editar, Excel y 📊 Panel de compras (con gráfico del costo) |
 | 💰 Vender | Uno o varios productos, cliente (buscar o crear) y forma de pago. Descuenta stock por FIFO |
 
@@ -45,7 +45,7 @@ Abrí el archivo `.env` con el Bloc de notas y completá los datos (ver abajo).
 python scripts/importar_excel.py "Datos_Joaquín.xlsx"
 ```
 
-- La hoja **Producto** carga los productos con su SKU, código de barra y precio. El *Stock disponible* queda como stock inicial.
+- La hoja **Producto** carga los productos con su código de barra y precio (el SKU del Excel solo se usa para unir las hojas). El *Stock disponible* queda como stock inicial.
 - La hoja **Compras** queda como historial. Los productos que no estaban en la hoja Producto se crean y quedan marcados **para revisar**.
 - La hoja **Ventas** queda como historial.
 
@@ -82,6 +82,13 @@ Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma r
 4. Si la factura ya se había cargado antes, el bot avisa.
 
 Otros comandos: `/stock nombre` muestra el stock de un producto, y `/ayuda` muestra las instrucciones.
+
+## Productos y proveedores
+
+Un producto es uno solo aunque se compre en distintos lugares: el proveedor queda guardado en
+cada compra (y en el Panel de compras se puede comparar cuánto costó en cada uno). Cuando llega
+una factura, la IA recibe la lista de productos y reconoce si es uno que ya existe aunque esté
+escrito distinto o venga de otro proveedor; así no se crean códigos repetidos.
 
 ## Impresora térmica de etiquetas
 
@@ -129,7 +136,7 @@ Los datos (base de datos, fotos de productos y facturas) se guardan en la carpet
 
 - `app/main.py` contiene las rutas web (FastAPI + plantillas Jinja2).
 - `app/inventario.py` tiene las reglas: productos, compras (lotes), ventas FIFO y precios.
-- `app/codigos.py` genera el SKU, el código y el código de barra.
+- `app/codigos.py` genera el código del producto y el código de barra.
 - `app/telegram_bot.py` y `app/factura_ia.py` son el bot y la lectura de facturas con Claude.
 - `app/db.py` define el esquema SQLite. El stock es la suma de `lotes.cantidad_restante`.
 

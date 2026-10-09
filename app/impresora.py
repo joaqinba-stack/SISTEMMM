@@ -95,7 +95,7 @@ def tspl_etiquetas(pedidos: list[tuple[dict, int]], tamano_clave: str, con_preci
             lineas.append(_texto(d.precio, precio_texto(producto["precio_venta"]), d.precio.alto,
                                  "derecha" if d.precio_a_la_derecha else "centro"))
         if d.codigo:
-            lineas.append(_texto(d.codigo, _ascii(f"{producto['codigo']} {producto['sku']}"), d.codigo.alto))
+            lineas.append(_texto(d.codigo, _ascii(producto["codigo"]), d.codigo.alto))
         lineas.append(f"PRINT 1,{int(copias)}")
     return ("\r\n".join(lineas) + "\r\n").encode("ascii")
 

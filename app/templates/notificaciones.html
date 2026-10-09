@@ -35,7 +35,7 @@
   <p class="ayuda">Productos con {{ stock_bajo|cant }} unidades o menos. Desaparecen de la lista cuando llega una compra nueva.</p>
   <ul class="lista">
     {% for p in poco_stock %}
-      <li>{{ p.nombre_interno }} — <b class="{{ 'rojo' if p.stock <= 0 }}">{{ 'sin stock' if p.stock <= 0 else p.stock|cant }}</b>{% if p.proveedor %} <span class="suave">· se compra en {{ p.proveedor }}</span>{% endif %}</li>
+      <li>{{ p.nombre_interno }} — <b class="{{ 'rojo' if p.stock <= 0 }}">{{ 'sin stock' if p.stock <= 0 else p.stock|cant }}</b>{% if p.proveedor %} <span class="suave">· última compra en {{ p.proveedor }}</span>{% endif %}</li>
     {% endfor %}
   </ul>
 </section>

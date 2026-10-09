@@ -32,8 +32,9 @@ ESQUEMA = {
                     "cantidad": {"type": "number"},
                     "precio_unitario": {"type": "number"},
                     "total": {"type": "number"},
+                    "codigo_existente": {"type": "string"},
                 },
-                "required": ["descripcion", "cantidad", "precio_unitario", "total"],
+                "required": ["descripcion", "cantidad", "precio_unitario", "total", "codigo_existente"],
                 "additionalProperties": False,
             },
         },
@@ -57,7 +58,12 @@ Extraé los datos para cargarlos en un sistema de inventario.
   (por ejemplo 22.500 son veintidós mil quinientos). Devolvé los números sin puntos.
 - No incluyas renglones de subtotales, IVA, descuentos generales ni el total de la factura.
 - Si la imagen no es una factura o un ticket de compra, poné es_factura en false y items vacío.
-- Si algún dato no se puede leer, dejá el texto vacío o el número en 0. No inventes datos."""
+- Si algún dato no se puede leer, dejá el texto vacío o el número en 0. No inventes datos.
+- codigo_existente: más abajo está la lista de productos que ya existen en el inventario.
+  Si el renglón es el mismo producto que uno de la lista, poné su código (por ejemplo P-00028),
+  aunque en la factura esté escrito distinto (abreviado, en mayúsculas, con otro orden o con el
+  código del proveedor) y aunque venga de otro proveedor: el mismo producto se compra en varios
+  lugares. Si es un producto distinto (otro tamaño, otro modelo, otra medida), dejalo vacío."""
 
 
 def _preparar_imagen(contenido: bytes, media_type: str) -> tuple[bytes, str]:
@@ -81,9 +87,17 @@ def _bloque_archivo(contenido: bytes, media_type: str) -> dict:
     return {"type": tipo, "source": {"type": "base64", "media_type": media_type, "data": datos}}
 
 
-async def extraer(contenido: bytes, media_type: str = "image/jpeg") -> dict:
+def _texto_catalogo(catalogo: list[tuple[str, str]] | None) -> str:
+    if not catalogo:
+        return "\n\nTodavía no hay productos cargados en el inventario."
+    lineas = "\n".join(f"{codigo}: {nombre}" for codigo, nombre in catalogo)
+    return f"\n\nProductos que ya existen en el inventario (código: nombre):\n{lineas}"
+
+
+async def extraer(contenido: bytes, media_type: str = "image/jpeg",
+                  catalogo: list[tuple[str, str]] | None = None) -> dict:
     """Devuelve {es_factura, proveedor, nro_factura, fecha, items:[{descripcion, cantidad,
-    precio_unitario, total}]}."""
+    precio_unitario, total, codigo_existente}]}. catalogo: [(código, nombre)] de los productos."""
     if not config.ANTHROPIC_API_KEY:
         raise ErrorLectura("Falta configurar ANTHROPIC_API_KEY para poder leer facturas.")
     contenido, media_type = _preparar_imagen(contenido, media_type)
@@ -98,7 +112,7 @@ async def extraer(contenido: bytes, media_type: str = "image/jpeg") -> dict:
             messages=[{
                 "role": "user",
                 "content": [_bloque_archivo(contenido, media_type),
-                            {"type": "text", "text": INSTRUCCIONES}],
+                            {"type": "text", "text": INSTRUCCIONES + _texto_catalogo(catalogo)}],
             }],
         )
     except anthropic.AuthenticationError as exc:
@@ -138,6 +152,7 @@ def limpiar(datos: dict) -> dict:
             "cantidad": cantidad,
             "precio_unitario": total / cantidad,
             "total": total,
+            "codigo_existente": (item.get("codigo_existente") or "").strip().upper(),
         })
     return {
         "es_factura": bool(datos.get("es_factura", True)),

@@ -7,7 +7,6 @@
   {% if p.imagen %}<img class="foto-grande" src="/archivo/{{ p.imagen }}" alt="">{% endif %}
   <div>
     <div>Código: <b class="mono">{{ p.codigo }}</b></div>
-    <div>SKU: <b class="mono">{{ p.sku }}</b></div>
     <div>Código de barra:<br><img class="barra-img" src="/barra/{{ p.codigo_barra }}.svg" alt="{{ p.codigo_barra }}"></div>
     <div><a class="boton chico" href="/etiquetas?producto_id={{ p.id }}#producto">🏷️ Imprimir etiquetas de este producto</a></div>
     <div>En stock: <b>{{ p.stock|cant }}</b> · Costo de la última compra: <b>{{ p.costo_ultimo|gs }}</b></div>
@@ -19,7 +18,7 @@
   <label>Nombre del producto (interno) <span class="obligatorio">*</span>
     <input name="nombre_interno" value="{{ p.nombre_interno }}" required>
   </label>
-  <label>Nombre del producto en la factura del proveedor
+  <label>Nombre del producto como viene en la factura
     <input name="nombre_proveedor" value="{{ p.nombre_proveedor }}">
   </label>
   <div class="dos-columnas">
@@ -32,12 +31,6 @@
       </select>
     </label>
   </div>
-  <label>Proveedor
-    <input name="proveedor" list="lista-proveedores" value="{{ p.proveedor }}">
-    <datalist id="lista-proveedores">
-      {% for pr in proveedores %}<option value="{{ pr.nombre }}">{% endfor %}
-    </datalist>
-  </label>
   <div class="dos-columnas">
     <label>Ganancia %
       <input name="margen_pct" id="margen_pct" inputmode="decimal" value="{{ '%g'|format(p.margen_pct) }}">
@@ -61,7 +54,7 @@
 
 <section class="tarjeta unir" id="unir">
   <h2>🔁 ¿Este producto ya existía con otro nombre?</h2>
-  <p class="ayuda">Si la factura creó este producto por error, elegí acá el producto correcto. La compra y el stock pasan a ese producto, este se borra (con su SKU <b class="mono">{{ p.sku }}</b>) y la próxima factura con este nombre se reconoce sola.</p>
+  <p class="ayuda">Si la factura creó este producto por error, elegí acá el producto correcto. La compra y el stock pasan a ese producto, este se borra (con su código <b class="mono">{{ p.codigo }}</b>) y la próxima factura con este nombre se reconoce sola.</p>
   <script type="application/json" id="datos-otros">{{ productos_json|safe }}</script>
   <form method="post" action="/productos/{{ p.id }}/unir" class="formulario sin-borde"
         data-confirmar="¿Seguro? La compra y el stock de «{{ p.nombre_interno }}» pasan al producto elegido y este se borra.">

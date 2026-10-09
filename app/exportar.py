@@ -36,14 +36,14 @@ def _libro(titulo: str, encabezados: list[str], filas: list[list], columnas_dine
 
 
 def productos(con) -> bytes:
-    encabezados = ["SKU", "Código", "Código de barra", "Nombre interno", "Nombre proveedor",
-                   "Marca", "Categoría", "Proveedor", "Costo última compra", "Margen %",
+    encabezados = ["Código", "Código de barra", "Nombre interno", "Nombre en la factura",
+                   "Marca", "Categoría", "Última compra en", "Costo última compra", "Margen %",
                    "Precio venta", "En stock", "Activo"]
-    filas = [[p["sku"], p["codigo"], p["codigo_barra"], p["nombre_interno"], p["nombre_proveedor"],
+    filas = [[p["codigo"], p["codigo_barra"], p["nombre_interno"], p["nombre_proveedor"],
               p["marca"], p["categoria"], p["proveedor"], round(p["costo_ultimo"]),
               p["margen_pct"], p["precio_venta"], p["stock"], "Sí" if p["activo"] else "No"]
              for p in inv.listar_productos(con)]
-    return _libro("Productos", encabezados, filas, columnas_dinero=(9, 11))
+    return _libro("Productos", encabezados, filas, columnas_dinero=(8, 10))
 
 
 def compras(con, filtros: dict | None = None) -> bytes:
@@ -57,10 +57,10 @@ def compras(con, filtros: dict | None = None) -> bytes:
 
 
 def ventas(con) -> bytes:
-    encabezados = ["Fecha", "Cliente", "Código", "SKU", "Producto", "Cantidad", "Precio unit.",
+    encabezados = ["Fecha", "Cliente", "Código", "Producto", "Cantidad", "Precio unit.",
                    "Total", "Costo (FIFO)", "Ganancia", "Medio de pago"]
-    filas = [[inv.fecha_txt(v["fecha"]), v["cliente"], v["codigo"], v["sku"], v["nombre_interno"],
+    filas = [[inv.fecha_txt(v["fecha"]), v["cliente"], v["codigo"], v["nombre_interno"],
               v["cantidad"], round(v["precio_unit"]), round(v["total"]), round(v["costo_fifo"]),
               round(v["ganancia"]), v["medio_pago"]]
              for v in inv.listar_ventas(con)]
-    return _libro("Ventas", encabezados, filas, columnas_dinero=(7, 8, 9, 10))
+    return _libro("Ventas", encabezados, filas, columnas_dinero=(6, 7, 8, 9))

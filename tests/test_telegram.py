@@ -57,7 +57,7 @@ def test_flujo_foto_confirmar_guardar(monkeypatch):
     with db.conexion() as con:
         assert inv.obtener_producto(con, existente["id"])["stock"] == 8
         nuevo = con.execute("SELECT * FROM productos WHERE nombre_interno = 'Cortador de Pabilo'").fetchone()
-        assert nuevo["revisar"] == 1 and nuevo["sku"].startswith("COR-PAB")
+        assert nuevo["revisar"] == 1 and nuevo["codigo"].startswith("P-")
         assert nuevo["precio_venta"] == 37800  # 27.000 + 40 %
         assert inv.stock(con, nuevo["id"]) == 6
         compra = con.execute("SELECT * FROM compras WHERE origen = 'telegram'").fetchone()
@@ -169,3 +169,43 @@ def test_corregir_renglon_en_telegram_y_aprender(monkeypatch):
     c = boton(imprimir)
     assert "mandé 12 etiqueta" in c.message.reply_text.call_args.args[0]  # 6 pistolas + 6 cortadores
     assert enviados[0].count(b"PRINT 1,6") == 2
+
+
+def test_mismo_producto_de_otro_proveedor_no_crea_codigo_nuevo(monkeypatch):
+    with db.conexion() as con:
+        cortador = inv.crear_producto(con, {"nombre_interno": "Cortador de Pabilo", "proveedor": "Pacific",
+                                            "cantidad": 2, "costo_total": 54000, "fecha": "2026-09-01"})
+        balanza = inv.crear_producto(con, {"nombre_interno": "Balanza digital 10kg", "proveedor": "Pacific",
+                                           "cantidad": 1, "costo_total": 22500, "fecha": "2026-09-01"})
+    leido = {"es_factura": True, "proveedor": "Super K", "nro_factura": "001-001-9", "fecha": "2026-10-01",
+             "items": [
+                 # la IA lo reconoció por la lista de productos aunque está escrito distinto
+                 {"descripcion": "CORT. PABILO INOX X1", "cantidad": 3, "precio_unitario": 25000,
+                  "total": 75000, "codigo_existente": cortador["codigo"]},
+                 # sin ayuda de la IA, igual se reconoce por el nombre (otro orden de palabras)
+                 {"descripcion": "BALANZA 10KG DIGITAL", "cantidad": 1, "precio_unitario": 23000,
+                  "total": 23000, "codigo_existente": ""},
+             ]}
+    compra = bot.preparar_compra(leido, None)
+    assert [i["producto_id"] for i in compra["items"]] == [cortador["id"], balanza["id"]]
+    assert compra["items"][0]["aprender"] is True
+    bot.guardar_compra(compra)
+    with db.conexion() as con:
+        assert con.execute("SELECT COUNT(*) FROM productos").fetchone()[0] == 2  # no se creó ninguno nuevo
+        assert inv.stock(con, cortador["id"]) == 5
+        assert inv.obtener_producto(con, cortador["id"])["proveedor"] == "Super K"  # última compra
+        assert inv.buscar_coincidencia(con, "cort. pabilo inox x1")["id"] == cortador["id"]  # aprendido
+
+
+def test_la_ia_recibe_la_lista_de_productos(monkeypatch):
+    with db.conexion() as con:
+        inv.crear_producto(con, {"nombre_interno": "Cortador de Pabilo"})
+    monkeypatch.setattr(config, "TELEGRAM_USUARIOS_PERMITIDOS", {"111"})
+    extraer = AsyncMock(return_value={**LEIDO, "items": []})
+    monkeypatch.setattr(factura_ia, "extraer", extraer)
+    archivo = MagicMock(download_as_bytearray=AsyncMock(return_value=bytearray(_foto_jpg())))
+    mensaje = MagicMock(photo=[MagicMock(get_file=AsyncMock(return_value=archivo))],
+                        reply_text=AsyncMock(return_value=MagicMock(edit_text=AsyncMock())))
+    asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=SimpleNamespace(id=111),
+                                                    effective_message=mensaje), None))
+    assert ("P-00001", "Cortador de Pabilo") in extraer.call_args.args[2]
