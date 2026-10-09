@@ -236,6 +236,22 @@ def fijar_margen(con: sqlite3.Connection, producto_id: int, margen_pct) -> int:
     return precio
 
 
+def fijar_precio(con: sqlite3.Connection, producto_id: int, precio_venta) -> float:
+    """Guarda un precio de venta escrito a mano y calcula solo el % de ganancia sobre el
+    costo de la última compra. Devuelve el % (o el que ya tenía si todavía no hay costo)."""
+    precio = leer_numero(precio_venta)
+    if precio is None or precio <= 0:
+        raise ErrorNegocio("Escribí un precio de venta válido (por ejemplo 45.000).")
+    producto = con.execute("SELECT margen_pct FROM productos WHERE id = ?", (producto_id,)).fetchone()
+    if not producto:
+        raise ErrorNegocio("Ese producto no existe.")
+    costo = costo_referencia(con, producto_id)
+    margen = round((precio / costo - 1) * 100, 1) if costo > 0 else producto["margen_pct"]
+    con.execute("UPDATE productos SET margen_pct = ?, precio_venta = ? WHERE id = ?",
+                (margen, int(round(precio)), producto_id))
+    return margen
+
+
 def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int | None):
     """Busca un producto parecido a la descripción de la factura. Devuelve la fila o None.
     Primero mira los nombres aprendidos (alias) de correcciones anteriores."""

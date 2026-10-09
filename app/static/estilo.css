@@ -228,8 +228,8 @@ input[readonly] { background: #f0eee9; }
 .formulario.sin-borde { border: 0; padding: 0; background: transparent; }
 
 /* ---- Productos: % por producto ---- */
-.margen-form { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
-.margen-form input { width: 78px; min-height: 42px !important; padding: 6px 8px !important; margin: 0 !important; text-align: right; }
+.precio-form, .precio-fila { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.campo-con-unidad input { width: 78px; min-height: 42px !important; padding: 6px 8px !important; margin: 0 !important; text-align: right; }
 .precio-nuevo { font-weight: 700; color: var(--verde); }
 
 /* ---- Panel de compras ---- */
@@ -313,3 +313,9 @@ input[readonly] { background: #f0eee9; }
   .tamano { min-width: 0; flex: 1 1 calc(33% - 10px); }
   .acciones-fila { justify-content: flex-start; }
 }
+
+/* ---- Productos: % y precio editables en la misma fila ---- */
+.precio-form { margin: 0; }
+.campo-con-unidad { display: inline-flex; align-items: center; gap: 4px; }
+.campo-con-unidad > span { color: var(--suave); font-weight: 700; }
+.precio-fila .campo-con-unidad input { width: 104px; }

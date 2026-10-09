@@ -36,7 +36,7 @@ def test_flujo_completo_web():
         r = nuevo_producto(c)
         assert r.status_code == 200 and "Producto guardado" in r.text
         assert "MOL-VEL-COR-00001" in r.text and "20022001" in r.text
-        assert "₲ 12.260" in r.text  # 8.757 + 40 %
+        assert 'value="12260"' in r.text  # 8.757 + 40 %
         assert "Imprimir lista" not in r.text and "Cambiar precios por porcentaje" not in r.text
 
         r = c.get("/compras")
@@ -50,15 +50,30 @@ def test_flujo_completo_web():
         r = c.post("/productos/1/editar", data={
             "nombre_interno": "Molde vela corazón P", "categoria_id": "1", "proveedor": "Super K",
             "margen_pct": "50", "precio_venta": "13.136", "activo": "1"})
-        assert "Cambios guardados" in r.text and "₲ 13.136" in r.text
+        assert "Cambios guardados" in r.text and 'value="13136"' in r.text
 
 
-def test_margen_por_producto_en_la_tabla():
+def test_precio_por_porcentaje_o_a_mano_en_la_tabla():
     with cliente() as c:
         nuevo_producto(c, cantidad="1", costo="10000")
-        r = c.post("/productos/1/margen", data={"margen_pct": "100"})
-        assert "nuevo precio ₲ 20.000" in r.text
-        r = c.post("/productos/1/margen", data={"margen_pct": "abc"})
+        r = c.get("/productos")
+        assert 'name="precio_venta"' in r.text and 'name="margen_pct"' in r.text
+        # por porcentaje: se calcula el precio
+        r = c.post("/productos/1/precio", data={"margen_pct": "100", "precio_venta": "20000", "origen": "margen"})
+        assert "precio ₲ 20.000 (ganancia 100%)" in r.text
+        # a mano: se calcula el porcentaje
+        r = c.post("/productos/1/precio", data={"margen_pct": "100", "precio_venta": "13.500", "origen": "precio"})
+        assert "precio ₲ 13.500 (ganancia 35%)" in r.text
+        assert 'value="35"' in r.text and 'value="13500"' in r.text and 'value="13500"' in r.text
+        # sin decir cuál se tocó: vale el precio si cambió
+        r = c.post("/productos/1/precio", data={"margen_pct": "35", "precio_venta": "15.550"})
+        assert "precio ₲ 15.550 (ganancia 55,5%)" in r.text
+        # la ruta vieja por % sigue funcionando
+        r = c.post("/productos/1/margen", data={"margen_pct": "40"})
+        assert "precio ₲ 14.000 (ganancia 40%)" in r.text
+        r = c.post("/productos/1/precio", data={"precio_venta": "0", "origen": "precio"})
+        assert "precio de venta válido" in r.text
+        r = c.post("/productos/1/precio", data={"margen_pct": "abc", "origen": "margen"})
         assert "porcentaje válido" in r.text
 
 

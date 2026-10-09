@@ -213,15 +213,30 @@ def productos_excel():
 
 
 @app.post("/productos/{producto_id}/margen")
-def producto_margen(request: Request, producto_id: int, margen_pct: str = Form("")):
+@app.post("/productos/{producto_id}/precio")
+def producto_precio(request: Request, producto_id: int, margen_pct: str = Form(""),
+                    precio_venta: str = Form(""), origen: str = Form("")):
+    """Precio por % de ganancia o escrito a mano: las dos formas valen y se calculan entre sí."""
     try:
         with db.conexion() as con:
-            precio = inv.fijar_margen(con, producto_id, margen_pct)
-            nombre = inv.obtener_producto(con, producto_id)["nombre_interno"]
+            actual = inv.obtener_producto(con, producto_id)
+            if not actual:
+                raise inv.ErrorNegocio("Ese producto no existe.")
+            precio_escrito = inv.leer_numero(precio_venta)
+            por_precio = origen == "precio" or (
+                origen != "margen" and precio_escrito is not None
+                and int(round(precio_escrito)) != actual["precio_venta"])
+            if por_precio:
+                margen = inv.fijar_precio(con, producto_id, precio_venta)
+                precio = int(round(precio_escrito))
+            else:
+                precio = inv.fijar_margen(con, producto_id, margen_pct)
+                margen = inv.leer_numero(margen_pct)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/productos#p{producto_id}")
-    avisar(request, f"✅ {nombre}: ganancia {margen_pct}%, nuevo precio {inv.guaranies(precio)}.")
+    avisar(request, f"✅ {actual['nombre_interno']}: precio {inv.guaranies(precio)} "
+                    f"(ganancia {f'{margen:g}'.replace('.', ',')}%).")
     return ir(f"/productos#p{producto_id}")
 
 

@@ -166,3 +166,15 @@ def test_unir_producto_creado_por_error(con):
     assert inv.buscar_coincidencia(con, "pistola calor 300w xq", None)["id"] == bueno["id"]
     with pytest.raises(inv.ErrorNegocio, match="distinto"):
         inv.unir_productos(con, bueno["id"], bueno["id"])
+
+
+def test_precio_a_mano_calcula_el_porcentaje(con):
+    p = inv.crear_producto(con, {"nombre_interno": "A", "cantidad": 2, "costo_total": 20000})
+    assert inv.fijar_precio(con, p["id"], "15.000") == 50
+    fila = inv.obtener_producto(con, p["id"])
+    assert fila["precio_venta"] == 15000 and fila["margen_pct"] == 50
+    sin_costo = inv.crear_producto(con, {"nombre_interno": "B", "margen_pct": 30})
+    assert inv.fijar_precio(con, sin_costo["id"], "9000") == 30  # sin costo se guarda el precio y queda el %
+    assert inv.obtener_producto(con, sin_costo["id"])["precio_venta"] == 9000
+    with pytest.raises(inv.ErrorNegocio):
+        inv.fijar_precio(con, p["id"], "")

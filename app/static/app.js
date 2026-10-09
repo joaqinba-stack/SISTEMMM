@@ -315,18 +315,28 @@
     if (!costoBase) recalcular();
   });
 
-  // Tabla de productos: al escribir el % se ve cómo queda el precio antes de guardar.
-  document.querySelectorAll("input[data-precio-de]").forEach(function (campo) {
-    var celda = document.getElementById(campo.dataset.precioDe);
-    var original = celda.textContent;
-    campo.addEventListener("input", function () {
-      var costo = parseFloat(campo.dataset.costo), m = leerNumero(campo.value);
-      if (costo > 0 && isFinite(m) && m >= 0) {
-        celda.innerHTML = '<span class="precio-nuevo">' + gs(Math.round(costo * (1 + m / 100))) + "</span>" +
-          '<span class="suave chica"> tocá ✓ para guardar</span>';
-      } else {
-        celda.textContent = original;
-      }
+  // Tabla de productos: el precio se puede poner por % de ganancia o escribirlo a mano.
+  // Si se escribe el %, se calcula el precio; si se escribe el precio, se calcula el %.
+  document.querySelectorAll("form.precio-form").forEach(function (form) {
+    var costo = parseFloat(form.dataset.costo);
+    var origen = form.querySelector("input[name=origen]");
+    var margen = form.querySelector("input[data-campo=margen]");
+    var precio = document.querySelector('input[form="' + form.id + '"][data-campo=precio]');
+    var boton = document.querySelector('button[form="' + form.id + '"]');
+    var marcar = function (cual) {
+      origen.value = cual;
+      boton.classList.add("principal");
+      boton.title = "Tocá para guardar el cambio";
+    };
+    margen.addEventListener("input", function () {
+      marcar("margen");
+      var m = leerNumero(margen.value);
+      if (costo > 0 && isFinite(m) && m >= 0) precio.value = miles(Math.round(costo * (1 + m / 100)));
+    });
+    precio.addEventListener("input", function () {
+      marcar("precio");
+      var p = leerNumero(precio.value);
+      if (costo > 0 && p > 0) margen.value = String(Math.round((p / costo - 1) * 1000) / 10).replace(".", ",");
     });
   });
 
