@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block titulo %}Vender{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>💰 Registrar una venta</h1>
+  <div class="botones no-imprimir"><a class="boton" href="/ventas/excel">📊 Ventas a Excel</a></div>
+</div>
+<p class="ayuda">Agregá uno o varios productos. El precio sale de la ficha del producto. El sistema descuenta primero lo que se compró antes (FIFO) y calcula la ganancia real.</p>
+
+<script type="application/json" id="datos-productos">{{ productos_json|safe }}</script>
+<script type="application/json" id="datos-clientes">{{ clientes_json|safe }}</script>
+
+<form method="post" action="/vender" class="formulario" id="form-venta" data-venta>
+  <fieldset>
+    <legend>1. Productos</legend>
+    <div class="agregar-producto">
+      <div class="buscador" data-buscador="#datos-productos" id="buscador-producto">
+        <label for="buscar-producto">Producto</label>
+        <input type="text" id="buscar-producto" placeholder="🔎 Escribí el nombre o el código…" autocomplete="off"
+               role="combobox" aria-expanded="false" aria-controls="lista-producto" aria-autocomplete="list">
+        <ul class="sugerencias" id="lista-producto" role="listbox" hidden></ul>
+      </div>
+      <label class="campo-cantidad">Cantidad
+        <input type="number" id="cantidad-producto" min="1" step="1" value="1" inputmode="numeric">
+      </label>
+      <button class="boton principal agregar" type="button" id="agregar-producto">🛒 Agregar</button>
+    </div>
+    <p class="error-linea" id="error-producto" role="alert" hidden></p>
+
+    <div class="tabla-envoltura carrito-envoltura">
+      <table class="tabla carrito con-fotos" id="carrito">
+        <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Subtotal</th><th></th></tr></thead>
+        <tbody>
+          <tr class="carrito-vacio"><td colspan="5">Todavía no agregaste productos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="calculado total-venta">Total a cobrar: <b id="total-venta">₲ 0</b></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Cliente</legend>
+    <input type="hidden" name="cliente_id" id="cliente_id">
+    <div class="buscador" data-buscador="#datos-clientes" data-crear="cliente" id="buscador-cliente">
+      <label for="buscar-cliente">Buscar cliente (nombre, teléfono o RUC/CI)</label>
+      <input type="text" id="buscar-cliente" placeholder="🔎 Escribí para buscar… (si no se elige, queda sin cliente)" autocomplete="off"
+             role="combobox" aria-expanded="false" aria-controls="lista-cliente" aria-autocomplete="list">
+      <ul class="sugerencias" id="lista-cliente" role="listbox" hidden></ul>
+    </div>
+    <div class="elegido" id="cliente-elegido" hidden>
+      <span>👤 <b id="cliente-nombre"></b> <span class="suave" id="cliente-detalle"></span></span>
+      <button class="boton chico" type="button" id="quitar-cliente">Cambiar</button>
+    </div>
+
+    <div class="tarjeta nuevo-cliente" id="nuevo-cliente" hidden>
+      <h3>➕ Cliente nuevo</h3>
+      <label>Nombre <span class="obligatorio">*</span><input id="nc-nombre" autocomplete="off"></label>
+      <div class="dos-columnas">
+        <label>Teléfono<input id="nc-telefono" inputmode="tel" autocomplete="off" placeholder="Ej: 0981 123 456"></label>
+        <label>RUC / CI<input id="nc-documento" autocomplete="off" placeholder="Ej: 1234567-8"></label>
+      </div>
+      <p class="error-linea" id="nc-error" role="alert" hidden></p>
+      <div class="botones">
+        <button class="boton" type="button" id="nc-cancelar">✖ Cancelar</button>
+        <button class="boton principal" type="button" id="nc-guardar">💾 Guardar cliente</button>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>3. Pago</legend>
+    <div class="dos-columnas">
+      <label>Forma de pago
+        <select name="medio_pago">
+          {% for m in medios %}<option>{{ m }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Fecha
+        <input type="date" name="fecha" value="{{ hoy }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <div class="botones">
+    <a class="boton grande" href="/vender">✖ Cancelar</a>
+    <button class="boton grande principal" type="submit" id="guardar-venta" disabled>💾 Guardar venta</button>
+  </div>
+</form>
+
+<h2>Últimas ventas</h2>
+<div class="tabla-envoltura">
+<table class="tabla con-fotos">
+  <thead><tr><th>Fecha</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th class="num">Ganancia</th><th>Pago</th></tr></thead>
+  <tbody>
+  {% for v in ventas %}
+    <tr>
+      <td data-titulo="Fecha">{{ v.fecha|fecha }}</td>
+      <td data-titulo="Cliente">{{ v.cliente or '—' }}</td>
+      <td data-titulo="Productos"><div class="items-venta">{% for i in v['items'] %}<div class="item-venta">{% if i.imagen %}<img class="foto-chica ampliable" src="/archivo/{{ i.imagen }}" alt="{{ i.nombre_interno }}" loading="lazy" tabindex="0">{% else %}<span class="foto-chica sin-foto">📷</span>{% endif %}<span>{{ i.cantidad|cant }} × {{ i.nombre_interno }}</span></div>{% endfor %}</div></td>
+      <td data-titulo="Total" class="num"><b>{{ v.total|gs }}</b></td>
+      <td data-titulo="Ganancia" class="num">{{ v.ganancia|gs }}</td>
+      <td data-titulo="Pago">{{ v.medio_pago }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Todavía no hay ventas.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

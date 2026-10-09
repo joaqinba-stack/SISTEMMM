@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block titulo %}Compras{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>🧾 Compras</h1>
+  <div class="botones no-imprimir">
+    <a class="boton" href="/compras/excel">📊 Pasar a Excel</a>
+    <a class="boton principal" href="/compras/panel">📊 Panel de compras</a>
+  </div>
+</div>
+<p class="ayuda no-imprimir">Las compras se cargan solas cuando mandás la foto de la factura al bot de Telegram. En el <b>📊 Panel de compras</b> podés ver cuánto se gastó por proveedor, producto y fechas.</p>
+
+<div class="filtros no-imprimir">
+  <input type="search" placeholder="🔎 Buscar por factura, proveedor o producto…" data-buscar="#tabla-compras">
+</div>
+
+<div class="tabla-envoltura">
+<table class="tabla" id="tabla-compras">
+  <thead>
+    <tr>
+      <th>Fecha</th><th>Código producto</th><th>N° de factura</th><th>Proveedor</th>
+      <th>Nombre del producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th>
+      <th class="num">Precio total</th><th class="no-imprimir">Factura</th><th class="no-imprimir">Editar</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for c in compras %}
+    <tr>
+      <td data-titulo="Fecha">{{ c.fecha|fecha }}</td>
+      <td data-titulo="Código producto" class="mono">{{ c.codigo }}</td>
+      <td data-titulo="N° de factura" class="mono">{{ c.nro_factura or '—' }}</td>
+      <td data-titulo="Proveedor">{{ c.proveedor }}</td>
+      <td data-titulo="Producto"><b>{{ c.nombre_interno }}</b>{% if c.origen == 'telegram' %} <span class="etiqueta" title="Cargada por Telegram">📱</span>{% endif %}</td>
+      <td data-titulo="Cantidad" class="num">{{ c.cantidad|cant }}</td>
+      <td data-titulo="Precio unitario" class="num">{{ c.costo_unitario|gs }}</td>
+      <td data-titulo="Precio total" class="num"><b>{{ c.costo_total|gs }}</b></td>
+      <td data-titulo="Factura" class="no-imprimir">{% if c.foto_factura %}<a href="/archivo/{{ c.foto_factura }}" target="_blank">📷 Ver</a>{% else %}—{% endif %}</td>
+      <td class="no-imprimir"><a class="boton chico" href="/compras/{{ c.lote_id }}/editar">✏️ Editar</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10">Todavía no hay compras cargadas.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
