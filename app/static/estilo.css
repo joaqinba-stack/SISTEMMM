@@ -17,6 +17,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Lo que está oculto queda oculto aunque otra regla le ponga display (visor de fotos, avisos…). */
+[hidden] { display: none !important; }
 html { font-size: 20px; }
 body {
   margin: 0;
@@ -319,3 +321,33 @@ input[readonly] { background: #f0eee9; }
 .campo-con-unidad { display: inline-flex; align-items: center; gap: 4px; }
 .campo-con-unidad > span { color: var(--suave); font-weight: 700; }
 .precio-fila .campo-con-unidad input { width: 104px; }
+
+/* ---- Fotos con protagonismo (Productos y stock, Vender) ---- */
+.tabla.con-fotos { font-size: 0.8rem; }
+.tabla.con-fotos th { font-size: 0.7rem; }
+.tabla.con-fotos .stock { font-size: 1rem; }
+.tabla.con-fotos .campo-con-unidad input { font-size: 0.85rem; }
+.tabla.con-fotos .celda-foto { width: 108px; }
+.tabla.con-fotos .miniatura, .tabla.con-fotos .celda-foto .sin-foto { width: 96px; height: 96px; border-radius: 10px; }
+.celda-foto .sin-foto { font-size: 1.6rem; text-decoration: none; }
+.ampliable { cursor: zoom-in; transition: transform .15s; }
+.ampliable:hover, .ampliable:focus { transform: scale(1.04); outline: 3px solid var(--verde); outline-offset: 1px; }
+.foto-chica { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.item-venta { display: flex; align-items: center; gap: 10px; }
+.items-venta { display: grid; gap: 6px; }
+.foto-sugerencia { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.sugerencias li:has(.foto-sugerencia) { flex-direction: row; align-items: center; gap: 12px; }
+.sugerencias li .texto-sugerencia { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--texto); font-size: inherit; }
+.sugerencias li .texto-sugerencia span { font-size: 0.82rem; color: var(--suave); }
+.foto-flotante { position: fixed; z-index: 60; width: 280px; height: 280px; object-fit: contain; background: #fff;
+  border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.3); pointer-events: none; }
+.visor-foto { position: fixed; inset: 0; z-index: 70; background: rgba(20,20,18,.88); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; padding: 20px; cursor: zoom-out; }
+.visor-foto figure { margin: 0; text-align: center; }
+.visor-foto img { max-width: min(92vw, 900px); max-height: 78vh; object-fit: contain; border-radius: 12px; background: #fff; cursor: default; }
+.visor-foto figcaption { color: #fff; font-weight: 700; margin-top: 10px; font-size: 1.1rem; }
+.visor-foto .cerrar-visor { background: #fff; }
+@media (max-width: 760px) {
+  .tabla.con-fotos .miniatura, .tabla.con-fotos .celda-foto .sin-foto { width: 120px; height: 120px; }
+}
+@media print { .foto-flotante, .visor-foto { display: none !important; } }

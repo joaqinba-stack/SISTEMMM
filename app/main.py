@@ -98,7 +98,8 @@ def opciones_productos(productos) -> str:
         {"id": p["id"], "texto": p["nombre_interno"],
          "detalle": f"{p['codigo']} · {inv.guaranies(p['precio_venta'])} · hay {inv.cantidad_txt(p['stock'])}",
          "buscar": f"{p['codigo']} {p['codigo_barra']}",
-         "precio": p["precio_venta"], "stock": p["stock"]}
+         "precio": p["precio_venta"], "stock": p["stock"],
+         "imagen": f"/archivo/{p['imagen']}" if p["imagen"] else ""}
         for p in productos])
 
 

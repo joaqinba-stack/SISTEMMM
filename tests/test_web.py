@@ -223,3 +223,24 @@ def test_editar_sin_duplicados_y_menu_fijo():
         assert "<title>Editar producto</title>" in r.text
         assert r.text.count('id="buscador-unir"') == 1
         assert '<header class="barra-menu no-imprimir">' in r.text
+
+
+
+def test_fotos_con_protagonismo_en_stock_y_vender():
+    import io as _io
+    from PIL import Image
+    foto = _io.BytesIO()
+    Image.new("RGB", (300, 300), "orange").save(foto, format="JPEG")
+    with cliente() as c:
+        nuevo_producto(c, "Angelito tipo 1", cantidad="3", costo="3000")
+        c.post("/productos/1/editar", data={"nombre_interno": "Angelito tipo 1", "categoria_id": "1",
+                                            "margen_pct": "40", "precio_venta": "1400", "activo": "1"},
+               files={"imagen": ("a.jpg", foto.getvalue(), "image/jpeg")})
+        r = c.get("/productos")
+        assert 'class="miniatura ampliable"' in r.text and 'alt="Angelito tipo 1"' in r.text
+        r = c.get("/vender")
+        assert '"imagen": "/archivo/productos/' in r.text  # la foto aparece en el buscador
+        c.post("/vender", data={"producto_id": ["1"], "cantidad": ["1"]})
+        assert 'class="foto-chica ampliable"' in c.get("/vender").text  # y en las últimas ventas
+        css = c.get("/static/estilo.css").text
+        assert "[hidden] { display: none !important; }" in css  # el visor oculto no tapa la página

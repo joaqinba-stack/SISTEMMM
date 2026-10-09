@@ -19,10 +19,10 @@
 <p class="suave chica no-imprimir">El stock se actualiza solo cada pocos segundos.</p>
 
 <div class="tabla-envoltura">
-<table class="tabla" id="tabla-productos">
+<table class="tabla con-fotos" id="tabla-productos">
   <thead>
     <tr>
-      <th>Imagen</th><th>Código</th>
+      <th>Foto</th><th>Código</th>
       <th>Nombre interno</th><th>Nombre en la factura</th><th>Última compra en</th>
       <th class="num">Ganancia %</th><th class="num">Precio venta</th><th class="num">En stock</th><th>Activo</th>
       <th class="no-imprimir">Editar</th>
@@ -31,8 +31,8 @@
   <tbody>
   {% for p in productos %}
     <tr id="p{{ p.id }}" class="{{ 'inactivo' if not p.activo }}{{ ' revisar' if p.revisar }}">
-      <td data-titulo="Imagen">
-        {% if p.imagen %}<img class="miniatura" src="/archivo/{{ p.imagen }}" alt="" loading="lazy">{% else %}<span class="sin-foto">📷</span>{% endif %}
+      <td data-titulo="Foto" class="celda-foto">
+        {% if p.imagen %}<img class="miniatura ampliable" src="/archivo/{{ p.imagen }}" alt="{{ p.nombre_interno }}" loading="lazy" tabindex="0">{% else %}<a class="sin-foto" href="/productos/{{ p.id }}/editar" title="Agregar foto">📷</a>{% endif %}
       </td>
       <td data-titulo="Código" class="mono">{{ p.codigo }}</td>
       <td data-titulo="Nombre interno"><div><b>{{ p.nombre_interno }}</b>{% if p.revisar %} <span class="etiqueta">🆕 revisar</span>{% endif %}<div class="suave chica">{{ p.categoria }}</div></div></td>

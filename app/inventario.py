@@ -622,7 +622,7 @@ def listar_ventas(con):
            vi.cantidad, vi.precio_unit, vi.costo_fifo,
            vi.cantidad * vi.precio_unit AS total,
            vi.cantidad * vi.precio_unit - vi.costo_fifo AS ganancia,
-           p.codigo, p.nombre_interno
+           p.codigo, p.nombre_interno, p.imagen
     FROM ventas v
     JOIN venta_items vi ON vi.venta_id = v.id
     JOIN productos p ON p.id = vi.producto_id

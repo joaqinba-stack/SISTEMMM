@@ -49,7 +49,9 @@
       }).slice(0, 40);
       var html = visibles.map(function (d, i) {
         return '<li role="option" id="' + lista.id + "-" + i + '" data-i="' + i + '" class="' + (i === activo ? "activa" : "") + '">' +
-          "<b>" + esc(d.texto) + "</b>" + (d.detalle ? "<span>" + esc(d.detalle) + "</span>" : "") + "</li>";
+          (d.imagen !== undefined ? (d.imagen ? '<img class="foto-sugerencia" src="' + esc(d.imagen) + '" alt="" loading="lazy">'
+                                                : '<span class="foto-sugerencia sin-foto">📷</span>') : "") +
+          '<span class="texto-sugerencia"><b>' + esc(d.texto) + "</b>" + (d.detalle ? "<span>" + esc(d.detalle) + "</span>" : "") + "</span></li>";
       }).join("");
       if (raiz.dataset.crear && q) {
         html += '<li role="option" class="crear" data-crear="1">➕ Crear cliente nuevo «' + esc(entrada.value.trim()) + "»</li>";
@@ -153,7 +155,9 @@
         var subtotal = item.cantidad * item.producto.precio;
         total += subtotal;
         return "<tr>" +
-          '<td data-titulo="Producto"><b>' + esc(item.producto.texto) + "</b>" +
+          '<td data-titulo="Producto"><div class="item-venta">' + (item.producto.imagen
+            ? '<img class="foto-chica ampliable" src="' + esc(item.producto.imagen) + '" alt="' + esc(item.producto.texto) + '" tabindex="0">'
+            : '<span class="foto-chica sin-foto">📷</span>') + "<b>" + esc(item.producto.texto) + "</b></div>" +
           '<input type="hidden" name="producto_id" value="' + item.producto.id + '">' +
           '<input type="hidden" name="cantidad" value="' + item.cantidad + '"></td>' +
           '<td data-titulo="Cantidad" class="num">' + cant(item.cantidad) + "</td>" +
@@ -263,6 +267,56 @@
     });
     pintarCarrito();
   }
+
+  // ------------------------------------------------------------------ fotos que se agrandan
+  // Al pasar el mouse por una foto se ve grande al lado; al tocarla o hacer clic se abre en pantalla completa.
+  var vistaFlotante = document.createElement("img");
+  vistaFlotante.className = "foto-flotante";
+  vistaFlotante.alt = "";
+  vistaFlotante.hidden = true;
+  document.body.appendChild(vistaFlotante);
+  var visor = document.createElement("div");
+  visor.className = "visor-foto";
+  visor.hidden = true;
+  visor.setAttribute("role", "dialog");
+  visor.setAttribute("aria-modal", "true");
+  visor.innerHTML = '<figure><img alt=""><figcaption></figcaption></figure><button type="button" class="boton cerrar-visor">✖ Cerrar</button>';
+  document.body.appendChild(visor);
+  var cerrarVisor = function () { visor.hidden = true; };
+  var abrirVisor = function (img) {
+    vistaFlotante.hidden = true;
+    visor.querySelector("img").src = img.currentSrc || img.src;
+    visor.querySelector("figcaption").textContent = img.alt || "";
+    visor.hidden = false;
+    visor.querySelector(".cerrar-visor").focus();
+  };
+  visor.addEventListener("click", function (e) { if (!e.target.closest("img")) cerrarVisor(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !visor.hidden) cerrarVisor();
+    if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("img.ampliable")) {
+      e.preventDefault();
+      abrirVisor(e.target);
+    }
+  });
+  document.addEventListener("click", function (e) {
+    var img = e.target.closest && e.target.closest("img.ampliable");
+    if (img) { e.preventDefault(); abrirVisor(img); }
+  });
+  var puedeFlotar = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  document.addEventListener("mouseover", function (e) {
+    var img = puedeFlotar && e.target.closest && e.target.closest("img.ampliable");
+    if (!img || !visor.hidden) return;
+    vistaFlotante.src = img.currentSrc || img.src;
+    vistaFlotante.hidden = false;
+    var r = img.getBoundingClientRect(), lado = 280, margen = 12;
+    var x = r.right + margen + lado > window.innerWidth ? r.left - lado - margen : r.right + margen;
+    var y = Math.min(Math.max(margen, r.top + r.height / 2 - lado / 2), window.innerHeight - lado - margen);
+    vistaFlotante.style.left = Math.max(margen, x) + "px";
+    vistaFlotante.style.top = y + "px";
+  });
+  document.addEventListener("mouseout", function (e) {
+    if (e.target.closest && e.target.closest("img.ampliable")) vistaFlotante.hidden = true;
+  });
 
   // ------------------------------------------------------------------ formularios con precios
   // Campos de dinero: al salir del campo se muestran con puntos de miles.

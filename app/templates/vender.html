@@ -28,7 +28,7 @@
     <p class="error-linea" id="error-producto" role="alert" hidden></p>
 
     <div class="tabla-envoltura carrito-envoltura">
-      <table class="tabla carrito" id="carrito">
+      <table class="tabla carrito con-fotos" id="carrito">
         <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Subtotal</th><th></th></tr></thead>
         <tbody>
           <tr class="carrito-vacio"><td colspan="5">Todavía no agregaste productos.</td></tr>
@@ -89,14 +89,14 @@
 
 <h2>Últimas ventas</h2>
 <div class="tabla-envoltura">
-<table class="tabla">
+<table class="tabla con-fotos">
   <thead><tr><th>Fecha</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th class="num">Ganancia</th><th>Pago</th></tr></thead>
   <tbody>
   {% for v in ventas %}
     <tr>
       <td data-titulo="Fecha">{{ v.fecha|fecha }}</td>
       <td data-titulo="Cliente">{{ v.cliente or '—' }}</td>
-      <td data-titulo="Productos"><div>{% for i in v['items'] %}<div>{{ i.cantidad|cant }} × {{ i.nombre_interno }}</div>{% endfor %}</div></td>
+      <td data-titulo="Productos"><div class="items-venta">{% for i in v['items'] %}<div class="item-venta">{% if i.imagen %}<img class="foto-chica ampliable" src="/archivo/{{ i.imagen }}" alt="{{ i.nombre_interno }}" loading="lazy" tabindex="0">{% else %}<span class="foto-chica sin-foto">📷</span>{% endif %}<span>{{ i.cantidad|cant }} × {{ i.nombre_interno }}</span></div>{% endfor %}</div></td>
       <td data-titulo="Total" class="num"><b>{{ v.total|gs }}</b></td>
       <td data-titulo="Ganancia" class="num">{{ v.ganancia|gs }}</td>
       <td data-titulo="Pago">{{ v.medio_pago }}</td>
