@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block titulo %}Editar producto{% endblock %}
+{% block contenido %}
+<h1>✏️ Editar producto</h1>
+
+<div class="tarjeta datos-fijos">
+  {% if p.imagen %}<img class="foto-grande" src="/archivo/{{ p.imagen }}" alt="">{% endif %}
+  <div>
+    <div>Código: <b class="mono">{{ p.codigo }}</b></div>
+    <div>Código de barra:<br><img class="barra-img" src="/barra/{{ p.codigo_barra }}.svg" alt="{{ p.codigo_barra }}"></div>
+    <div><a class="boton chico" href="/etiquetas?producto_id={{ p.id }}#producto">🏷️ Imprimir etiquetas de este producto</a></div>
+    <div>En stock: <b>{{ p.stock|cant }}</b> · Costo de la última compra: <b>{{ p.costo_ultimo|gs }}</b></div>
+  </div>
+</div>
+
+<form method="post" action="/productos/{{ p.id }}/editar" enctype="multipart/form-data" class="formulario" data-calculo-precio>
+  <input type="hidden" id="costo_base" value="{{ p.costo_ultimo }}">
+  <label>Nombre del producto (interno) <span class="obligatorio">*</span>
+    <input name="nombre_interno" value="{{ p.nombre_interno }}" required>
+  </label>
+  <label>Nombre del producto como viene en la factura
+    <input name="nombre_proveedor" value="{{ p.nombre_proveedor }}">
+  </label>
+  <div class="dos-columnas">
+    <label>Marca
+      <input name="marca" value="{{ p.marca }}">
+    </label>
+    <label>Categoría
+      <select name="categoria_id">
+        {% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if c.id == p.categoria_id }}>{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="dos-columnas">
+    <label>Ganancia %
+      <input name="margen_pct" id="margen_pct" inputmode="decimal" value="{{ '%g'|format(p.margen_pct) }}">
+    </label>
+    <label>Precio de venta
+      <input name="precio_venta" id="precio_venta" inputmode="numeric" data-dinero value="{{ p.precio_venta }}">
+    </label>
+  </div>
+  <label>Cambiar la foto del producto
+    <input type="file" name="imagen" accept="image/*">
+  </label>
+  <label class="casilla grande-casilla">
+    <input type="checkbox" name="activo" value="1" {{ 'checked' if p.activo }}> Producto activo (se vende)
+  </label>
+
+  <div class="botones">
+    <a class="boton grande" href="/productos#p{{ p.id }}">✖ Cancelar</a>
+    <button class="boton grande principal" type="submit">💾 Guardar</button>
+  </div>
+</form>
+
+<section class="tarjeta unir" id="unir">
+  <h2>🔁 ¿Este producto ya existía con otro nombre?</h2>
+  <p class="ayuda">Si la factura creó este producto por error, elegí acá el producto correcto. La compra y el stock pasan a ese producto, este se borra (con su código <b class="mono">{{ p.codigo }}</b>) y la próxima factura con este nombre se reconoce sola.</p>
+  <script type="application/json" id="datos-otros">{{ productos_json|safe }}</script>
+  <form method="post" action="/productos/{{ p.id }}/unir" class="formulario sin-borde"
+        data-confirmar="¿Seguro? La compra y el stock de «{{ p.nombre_interno }}» pasan al producto elegido y este se borra.">
+    <input type="hidden" name="destino_id" id="destino-id">
+    <div class="buscador" data-buscador="#datos-otros" data-destino="#destino-id" id="buscador-unir">
+      <label for="buscar-unir">Es el mismo producto que…</label>
+      <input type="text" id="buscar-unir" placeholder="🔎 Escribí el nombre o el código del producto correcto…" autocomplete="off"
+             role="combobox" aria-expanded="false" aria-controls="lista-unir" aria-autocomplete="list">
+      <ul class="sugerencias" id="lista-unir" role="listbox" hidden></ul>
+    </div>
+    <div class="botones"><button class="boton grande principal" type="submit">🔁 Unir con ese producto</button></div>
+  </form>
+</section>
+{% endblock %}

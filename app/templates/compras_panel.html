@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block titulo %}Panel de compras{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>📊 Panel de compras</h1>
+  <div class="botones">
+    <a class="boton" href="/compras">← Volver a Compras</a>
+    <a class="boton" href="/compras/excel?{{ consulta }}">📊 Pasar a Excel</a>
+  </div>
+</div>
+
+<script type="application/json" id="datos-productos">{{ productos_json|safe }}</script>
+<form method="get" action="/compras/panel" class="formulario filtros-panel" id="filtros-panel">
+  <label>Dónde se compró (proveedor)
+    <select name="proveedor_id">
+      <option value="">Todos</option>
+      {% for pr in proveedores %}<option value="{{ pr.id }}" {{ 'selected' if filtros.proveedor_id == pr.id|string }}>{{ pr.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <input type="hidden" name="producto_id" id="panel-producto-id" value="{{ filtros.producto_id }}">
+  <div class="buscador" data-buscador="#datos-productos" data-destino="#panel-producto-id" id="buscador-panel">
+    <label for="buscar-panel">Producto</label>
+    <input type="text" id="buscar-panel" placeholder="Todos (escribí para buscar)" autocomplete="off"
+           role="combobox" aria-expanded="false" aria-controls="lista-panel" aria-autocomplete="list"
+           value="{{ producto_elegido.nombre_interno if producto_elegido else '' }}">
+    <ul class="sugerencias" id="lista-panel" role="listbox" hidden></ul>
+  </div>
+  <label>Desde
+    <input type="date" name="desde" value="{{ filtros.desde }}">
+  </label>
+  <label>Hasta
+    <input type="date" name="hasta" value="{{ filtros.hasta }}">
+  </label>
+  <div class="botones">
+    <button class="boton principal" type="submit">🔎 Ver</button>
+    <a class="boton" href="/compras/panel">✖ Quitar filtros</a>
+  </div>
+</form>
+
+{% if producto_elegido %}
+<section class="tarjeta grafico-costo">
+  <h2>📈 Costo por unidad de «{{ producto_elegido.nombre_interno }}»</h2>
+  {% if resumen_costos %}
+    {% set r = resumen_costos %}
+    <div class="indicadores chicos">
+      <div class="indicador"><span>Último costo</span><b>{{ r.ultimo|gs }}</b></div>
+      <div class="indicador"><span>Cambio en el período</span>
+        <b class="{{ 'sube' if r.variacion > 0 else ('baja' if r.variacion < 0 else '') }}">
+          {% if r.variacion > 0 %}▲{% elif r.variacion < 0 %}▼{% else %}={% endif %}
+          {{ (r.variacion|abs)|gs }} <small>({{ '%+.1f'|format(r.variacion_pct)|replace('.', ',') }}%)</small></b></div>
+      <div class="indicador"><span>Más barato</span><b>{{ r.minimo|gs }}</b></div>
+      <div class="indicador"><span>Más caro</span><b>{{ r.maximo|gs }}</b></div>
+    </div>
+    {% if grafico_costos %}
+      <div class="grafico-envoltura">{{ grafico_costos|safe }}<div class="tooltip-grafico" hidden></div></div>
+      <p class="ayuda chica">Cada punto es una compra. Tocá un punto para ver la fecha, el proveedor y la factura. Los filtros de proveedor y fechas también cambian este gráfico.</p>
+    {% else %}
+      <p class="ayuda">Hay una sola compra en este período ({{ r.ultimo|gs }} por unidad). Hacen falta al menos 2 compras para ver la variación.</p>
+    {% endif %}
+  {% else %}
+    <p class="ayuda">No hay compras de este producto con esos filtros.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="indicadores">
+  <div class="indicador"><span>Total gastado</span><b>{{ total|gs }}</b></div>
+  <div class="indicador"><span>Facturas</span><b>{{ facturas|cant }}</b></div>
+  <div class="indicador"><span>Unidades compradas</span><b>{{ unidades|cant }}</b></div>
+</div>
+
+{% if filas %}
+<div class="graficos">
+  <section class="tarjeta grafico">
+    <h2>Gasto por proveedor</h2>
+    {% set mayor = por_proveedor[0][1] if por_proveedor else 1 %}
+    <ul class="barras">
+      {% for nombre, monto in por_proveedor %}
+        <li title="{{ nombre }}: {{ monto|gs }}">
+          <span class="barra-nombre">{{ nombre }}</span>
+          <span class="barra-pista"><span class="barra-relleno" style="width: {{ (monto / mayor * 100)|round(1) }}%"></span></span>
+          <span class="barra-valor">{{ monto|gs }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="tarjeta grafico">
+    <h2>Gasto por mes</h2>
+    {% set mayor_mes = por_mes|map(attribute=1)|max if por_mes else 1 %}
+    <ul class="barras">
+      {% for mes, monto in por_mes %}
+        <li title="{{ mes[5:7] }}/{{ mes[:4] }}: {{ monto|gs }}">
+          <span class="barra-nombre">{{ mes[5:7] }}/{{ mes[:4] }}</span>
+          <span class="barra-pista"><span class="barra-relleno" style="width: {{ (monto / mayor_mes * 100)|round(1) }}%"></span></span>
+          <span class="barra-valor">{{ monto|gs }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endif %}
+
+<h2>Detalle ({{ filas|length }} renglones)</h2>
+<div class="tabla-envoltura">
+<table class="tabla">
+  <thead>
+    <tr><th>Fecha</th><th>Proveedor</th><th>N° factura</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Total</th></tr>
+  </thead>
+  <tbody>
+  {% for c in filas %}
+    <tr>
+      <td data-titulo="Fecha">{{ c.fecha|fecha }}</td>
+      <td data-titulo="Proveedor">{{ c.proveedor or '—' }}</td>
+      <td data-titulo="N° factura" class="mono">{{ c.nro_factura or '—' }}</td>
+      <td data-titulo="Producto"><b>{{ c.nombre_interno }}</b></td>
+      <td data-titulo="Cantidad" class="num">{{ c.cantidad|cant }}</td>
+      <td data-titulo="Precio unitario" class="num">{{ c.costo_unitario|gs }}</td>
+      <td data-titulo="Total" class="num"><b>{{ c.costo_total|gs }}</b></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7">No hay compras con esos filtros. Probá con otras fechas o tocá <a href="/compras/panel">Quitar filtros</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

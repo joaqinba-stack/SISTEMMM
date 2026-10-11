@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block titulo %}Imprimir códigos de barra{% endblock %}
+{% block contenido %}
+<h1>🏷️ Imprimir códigos de barra</h1>
+
+<section class="tarjeta">
+  <h2>1. Tamaño de la etiqueta</h2>
+  <p class="ayuda">Elegí el tamaño de las etiquetas del rollo que tenés puesto en la impresora. Se recuerda para la próxima vez.</p>
+  <div class="tamanos-zona">
+    <form method="post" action="/etiquetas/tamano" class="tamanos" id="form-tamano">
+      <input type="hidden" name="producto_id" value="{{ elegido.id if elegido else '' }}">
+      {% for clave, (ancho, alto) in tamanos.items() %}
+        <label class="tamano {{ 'elegido' if clave == tamano }}">
+          <input type="radio" name="tamano" value="{{ clave }}" {{ 'checked' if clave == tamano }} data-enviar-al-cambiar>
+          <span class="tamano-dibujo" style="width: {{ ancho * 1.1 }}px; height: {{ alto * 1.1 }}px"></span>
+          <span class="tamano-medida">{{ ancho }} × {{ alto }} mm</span>
+        </label>
+      {% endfor %}
+      <noscript><button class="boton" type="submit">Guardar tamaño</button></noscript>
+    </form>
+    <figure class="vista-previa">
+      <img src="/etiquetas/vista.svg?tamano={{ tamano }}{% if ejemplo %}&producto_id={{ ejemplo.id }}{% endif %}"
+           alt="Vista previa de la etiqueta" style="aspect-ratio: {{ tamanos[tamano][0] }} / {{ tamanos[tamano][1] }}">
+      <figcaption>Así sale la etiqueta de {{ tamanos[tamano][0] }} × {{ tamanos[tamano][1] }} mm{% if ejemplo %} ({{ ejemplo.nombre_interno }}){% endif %}.</figcaption>
+    </figure>
+  </div>
+</section>
+
+{% if impresora %}
+<div class="aviso aviso-ok impresora-lista">
+  🖨️ Impresora térmica conectada: <b>{{ impresora_nombre }}</b>.
+  <form method="post" action="/etiquetas/prueba" class="en-linea-chica">
+    <button class="boton chico" type="submit">🧪 Imprimir etiqueta de prueba</button>
+  </form>
+</div>
+{% else %}
+<details class="tarjeta como-imprimir" open>
+  <summary>🖨️ Cómo conectar la impresora térmica (una sola vez)</summary>
+  <ol>
+    <li>Conectá la impresora por USB a esta computadora e instalá su driver (viene en el CD o en la página de Xprinter).</li>
+    <li>Poné el rollo de etiquetas adhesivas y fijate que el tamaño elegido arriba sea el del rollo.</li>
+    <li>Abrí el archivo <code>.env</code> y escribí el nombre de la impresora tal como aparece en <i>Impresoras</i> de Windows, por ejemplo <code>IMPRESORA_NOMBRE=Xprinter XP-365B</code>. Volvé a abrir el sistema.</li>
+  </ol>
+  <p class="ayuda chica">Mientras tanto podés usar <b>⬇️ PDF</b>: se descarga un PDF con una etiqueta por página, del tamaño exacto del rollo, para imprimir desde la ventana de impresión.</p>
+</details>
+{% endif %}
+
+<h2>2. ¿Qué etiquetas querés?</h2>
+<div class="dos-opciones">
+  <section class="tarjeta opcion" id="factura">
+    <h2>🧾 Todas las de una factura</h2>
+    <p class="ayuda">Sale <b>una etiqueta por cada unidad</b> que vino en la factura, lista para pegar. Las facturas que llegan por Telegram aparecen primero.</p>
+    <div class="filtros">
+      <input type="search" placeholder="🔎 Buscar factura, proveedor o fecha…" data-buscar="#tabla-facturas" aria-label="Buscar factura">
+    </div>
+    <div class="tabla-envoltura lista-facturas">
+      <table class="tabla" id="tabla-facturas">
+        <thead><tr><th>Fecha</th><th>Proveedor</th><th>N° factura</th><th class="num">Etiquetas</th><th></th></tr></thead>
+        <tbody>
+        {% for f in facturas %}
+          <tr>
+            <td data-titulo="Fecha">{{ f.fecha|fecha }}</td>
+            <td data-titulo="Proveedor">{{ f.proveedor or '—' }}{% if f.origen == 'telegram' %} <span class="etiqueta" title="Llegó por Telegram">📱</span>{% endif %}</td>
+            <td data-titulo="N° factura" class="mono">{{ f.nro_factura or '—' }}</td>
+            <td data-titulo="Etiquetas" class="num">{{ f.unidades|cant }} <span class="suave chica">({{ f.renglones }} producto{{ 's' if f.renglones != 1 }})</span></td>
+            <td>
+              <div class="acciones-fila">
+                {% if impresora %}
+                <form method="post" action="/etiquetas/factura/{{ f.id }}/imprimir">
+                  <button class="boton chico principal" type="submit">🖨️ Imprimir</button>
+                </form>
+                {% endif %}
+                <a class="boton chico {{ '' if impresora else 'principal' }}" href="/etiquetas/factura/{{ f.id }}.pdf">⬇️ PDF</a>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">Todavía no hay facturas cargadas.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tarjeta opcion" id="producto">
+    <h2>📦 Las de un producto</h2>
+    <p class="ayuda">Elegí el producto y cuántas etiquetas querés.</p>
+    <script type="application/json" id="datos-productos">{{ productos_json|safe }}</script>
+    <form method="post" action="/etiquetas/producto" class="formulario sin-borde" data-descarga>
+      <input type="hidden" name="producto_id" id="etiqueta-producto-id" value="{{ elegido.id if elegido else '' }}">
+      <div class="buscador" data-buscador="#datos-productos" data-destino="#etiqueta-producto-id" id="buscador-etiqueta">
+        <label for="buscar-etiqueta">Producto</label>
+        <input type="text" id="buscar-etiqueta" placeholder="🔎 Escribí el nombre o el código…" autocomplete="off"
+               role="combobox" aria-expanded="false" aria-controls="lista-etiqueta" aria-autocomplete="list"
+               value="{{ elegido.nombre_interno if elegido else '' }}">
+        <ul class="sugerencias" id="lista-etiqueta" role="listbox" hidden></ul>
+      </div>
+      <label>¿Cuántas etiquetas?
+        <input type="number" name="cantidad" min="1" max="1000" value="{{ elegido.stock|round|int if elegido and elegido.stock > 0 else 1 }}" inputmode="numeric" required>
+      </label>
+      <label class="casilla"><input type="checkbox" name="precio" value="no"> No mostrar el precio</label>
+      <div class="botones">
+        {% if impresora %}
+        <button class="boton grande principal" type="submit" name="accion" value="imprimir">🖨️ Imprimir</button>
+        {% endif %}
+        <button class="boton grande {{ '' if impresora else 'principal' }}" type="submit" name="accion" value="pdf">⬇️ PDF</button>
+      </div>
+      <p class="ayuda chica">¿Sin impresora térmica? <button class="enlace" type="submit" name="accion" value="a4">Bajá una hoja A4 de 21 etiquetas</button> para una impresora común.</p>
+    </form>
+  </section>
+</div>
+{% endblock %}

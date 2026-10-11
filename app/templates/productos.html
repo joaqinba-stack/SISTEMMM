@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block titulo %}Productos y stock{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>📦 Productos y stock</h1>
+  <div class="botones no-imprimir">
+    <a class="boton" href="/etiquetas">🏷️ Imprimir códigos de barra</a>
+    <a class="boton" href="/productos/excel">📊 Pasar a Excel</a>
+    <a class="boton principal" href="/productos/nuevo">✨ Nuevo producto</a>
+  </div>
+</div>
+
+<div class="filtros no-imprimir">
+  <input type="search" placeholder="🔎 Buscar por nombre o código…" data-buscar="#tabla-productos">
+  <label class="casilla"><input type="checkbox" data-mostrar-inactivos="#tabla-productos"> Mostrar inactivos</label>
+</div>
+
+
+<p class="suave chica no-imprimir">El stock se actualiza solo cada pocos segundos.</p>
+
+<div class="tabla-envoltura">
+<table class="tabla con-fotos" id="tabla-productos">
+  <thead>
+    <tr>
+      <th>Foto</th><th>Código</th>
+      <th>Nombre interno</th><th>Nombre en la factura</th><th>Última compra en</th>
+      <th class="num">Ganancia %</th><th class="num">Precio venta</th><th class="num">En stock</th><th>Activo</th>
+      <th class="no-imprimir">Editar</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in productos %}
+    <tr id="p{{ p.id }}" class="{{ 'inactivo' if not p.activo }}{{ ' revisar' if p.revisar }}">
+      <td data-titulo="Foto" class="celda-foto">
+        {% if p.imagen %}<img class="miniatura ampliable" src="/archivo/{{ p.imagen }}" alt="{{ p.nombre_interno }}" loading="lazy" tabindex="0">{% else %}<a class="sin-foto" href="/productos/{{ p.id }}/editar" title="Agregar foto">📷</a>{% endif %}
+      </td>
+      <td data-titulo="Código" class="mono">{{ p.codigo }}</td>
+      <td data-titulo="Nombre interno"><div><b>{{ p.nombre_interno }}</b>{% if p.revisar %} <span class="etiqueta">🆕 revisar</span>{% endif %}<div class="suave chica">{{ p.categoria }}</div></div></td>
+      <td data-titulo="Nombre en la factura">{{ p.nombre_proveedor }}</td>
+      <td data-titulo="Última compra en">{{ p.proveedor or '—' }}</td>
+      <td data-titulo="Ganancia %" class="num">
+        <form method="post" action="/productos/{{ p.id }}/precio" id="fp{{ p.id }}" class="precio-form" data-costo="{{ p.costo_ultimo }}">
+          <input type="hidden" name="origen" value="">
+          <span class="campo-con-unidad"><input name="margen_pct" inputmode="decimal" value="{{ ('%g'|format(p.margen_pct))|replace('.', ',') }}"
+                 aria-label="Ganancia % de {{ p.nombre_interno }}" data-campo="margen"><span>%</span></span>
+        </form>
+      </td>
+      <td data-titulo="Precio venta" class="num">
+        <span class="precio-fila">
+          <span class="campo-con-unidad"><span>₲</span><input form="fp{{ p.id }}" name="precio_venta" inputmode="numeric" data-dinero
+                 value="{{ p.precio_venta }}" aria-label="Precio de venta de {{ p.nombre_interno }}" data-campo="precio"></span>
+          <button form="fp{{ p.id }}" class="boton chico" type="submit" title="Guardar el precio y el %">✓</button>
+        </span>
+      </td>
+      <td data-titulo="En stock" class="num stock {{ 'rojo' if p.stock <= 0 }}" data-stock-id="{{ p.id }}">{{ p.stock|cant }}</td>
+      <td data-titulo="Activo">
+        <form method="post" action="/productos/{{ p.id }}/activo" class="no-imprimir">
+          <button class="interruptor {{ 'si' if p.activo else 'no' }}" type="submit"
+                  title="Tocá para cambiar">{{ 'Sí' if p.activo else 'No' }}</button>
+        </form>
+        <span class="solo-imprimir">{{ 'Sí' if p.activo else 'No' }}</span>
+      </td>
+      <td class="no-imprimir"><a class="boton chico" href="/productos/{{ p.id }}/editar">✏️ Editar</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10">Todavía no hay productos. Tocá <a href="/productos/nuevo">✨ Nuevo producto</a> para cargar el primero.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

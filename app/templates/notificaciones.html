@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block titulo %}Notificaciones{% endblock %}
+{% block contenido %}
+<h1>🔔 Notificaciones</h1>
+
+{% if not poco_stock and not revisar %}
+<section class="vacio">
+  <div class="vacio-icono">✅</div>
+  <h2>No hay avisos</h2>
+  <p>Todo en orden. Acá vas a ver los productos que se están por acabar y los productos nuevos que llegan por Telegram para revisar.</p>
+</section>
+{% endif %}
+
+{% if revisar %}
+<section class="tarjeta alerta">
+  <h2>🆕 Productos nuevos para revisar ({{ revisar|length }})</h2>
+  <p>Se crearon solos desde una factura. Si está bien, revisá la categoría y el precio y tocá <b>Guardar</b>. Si en realidad es un producto que ya tenías, tocá <b>🔁 Es el mismo que…</b>.</p>
+  <ul class="lista-revisar">
+    {% for p in revisar %}
+      <li>
+        <div><b>{{ p.nombre_interno }}</b> <span class="suave">· {{ p.precio_venta|gs }} · stock {{ p.stock|cant }}</span></div>
+        <div class="botones">
+          <a class="boton chico" href="/productos/{{ p.id }}/editar">✏️ Revisar</a>
+          <a class="boton chico" href="/productos/{{ p.id }}/editar#unir">🔁 Es el mismo que…</a>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if poco_stock %}
+<section class="tarjeta">
+  <h2>📉 Queda poco stock ({{ poco_stock|length }})</h2>
+  <p class="ayuda">Productos con {{ stock_bajo|cant }} unidades o menos. Desaparecen de la lista cuando llega una compra nueva.</p>
+  <ul class="lista">
+    {% for p in poco_stock %}
+      <li>{{ p.nombre_interno }} — <b class="{{ 'rojo' if p.stock <= 0 }}">{{ 'sin stock' if p.stock <= 0 else p.stock|cant }}</b>{% if p.proveedor %} <span class="suave">· última compra en {{ p.proveedor }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}
