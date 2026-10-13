@@ -1,0 +1,35 @@
+# Sistema de inventario en un servidor: la aplicación + Caddy, que pone el candado (HTTPS) solo.
+#
+#   cp .env.example .env    (completar DOMINIO y las claves)
+#   docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      URL_PUBLICA: https://${DOMINIO:?Falta escribir DOMINIO en el archivo .env}
+    volumes:
+      - datos:/app/datos
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  datos:
+  caddy_data:
+  caddy_config:

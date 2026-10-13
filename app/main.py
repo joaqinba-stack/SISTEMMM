@@ -90,7 +90,8 @@ async def exigir_sesion(request: Request, siguiente):
 
 # Se agrega después para que corra antes que exigir_sesion (y la sesión ya exista).
 app.add_middleware(SessionMiddleware, secret_key=config.clave_secreta(),
-                   max_age=60 * 60 * 24 * 90, same_site="lax")
+                   max_age=60 * 60 * 24 * 90, same_site="lax",
+                   https_only=config.URL_PUBLICA.startswith("https://"))
 
 
 # ---------------------------------------------------------------- utilidades
@@ -735,16 +736,22 @@ def etiquetas_vista(producto_id: str = "", tamano: str = "", precio: str = ""):
                     headers={"Cache-Control": "no-store"})
 
 
-def _pdf(contenido: bytes, nombre: str) -> Response:
+def _pdf(contenido: bytes, nombre: str, en_pantalla: bool = False) -> Response:
+    """en_pantalla: se abre en el navegador (para imprimir) en vez de descargarse."""
     nombre = re.sub(r"[^\w\-]+", "-", nombre).strip("-") or "etiquetas"
+    modo = "inline" if en_pantalla else "attachment"
     return Response(contenido, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="etiquetas-{nombre}.pdf"'})
+                    headers={"Content-Disposition": f'{modo}; filename="etiquetas-{nombre}.pdf"'})
 
 
-def _documento(lista: list, titulo: str, nombre: str, formato: str, con_precio: bool, con) -> Response:
+def _documento(lista: list, titulo: str, nombre: str, formato: str, con_precio: bool, con,
+               imprimir: bool = False) -> Response:
+    """imprimir: el PDF del rollo se abre mostrando la ventana de impresión del navegador, para
+    la impresora conectada a la computadora desde la que se entra (no a la del sistema)."""
     if formato == "a4":
         return _pdf(etiquetas_pdf.hoja_pdf(lista, titulo, con_precio), nombre + "-A4")
-    return _pdf(etiquetas_pdf.rollo_pdf(lista, tamano_etiqueta(con), titulo, con_precio), nombre)
+    return _pdf(etiquetas_pdf.rollo_pdf(lista, tamano_etiqueta(con), titulo, con_precio, imprimir),
+                nombre, en_pantalla=imprimir)
 
 
 def _mandar_a_impresora(request: Request, lista: list, con) -> None:
@@ -756,13 +763,15 @@ def _mandar_a_impresora(request: Request, lista: list, con) -> None:
 
 
 @app.get("/etiquetas/factura/{compra_id}.pdf")
-def etiquetas_factura(request: Request, compra_id: int, formato: str = "rollo"):
+def etiquetas_factura(request: Request, compra_id: int, formato: str = "rollo", imprimir: str = ""):
     try:
         with db.conexion() as con:
             lista, nombre = etiquetas_pdf.etiquetas_de_factura(con, compra_id)
-            usuarios.registrar(con, request.state.usuario, "Descargó etiquetas en PDF",
+            usuarios.registrar(con, request.state.usuario,
+                               "Imprimió etiquetas" if imprimir else "Descargó etiquetas en PDF",
                                f"{len(lista)} de la factura {nombre}")
-            return _documento(lista, f"Etiquetas factura {nombre}", nombre, formato, True, con)
+            return _documento(lista, f"Etiquetas factura {nombre}", nombre, formato, True, con,
+                              imprimir=bool(imprimir))
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/etiquetas")
@@ -799,12 +808,14 @@ def etiquetas_producto(request: Request, producto_id: str = Form(""), cantidad: 
                 request.state.anotado = True
                 avisar(request, f"🖨️ Se mandaron {n} etiqueta(s) de {ancho} × {alto} mm a la impresora.")
                 return ir(f"/etiquetas?producto_id={producto_id}")
-            usuarios.registrar(con, request.state.usuario, "Descargó etiquetas en PDF",
+            en_navegador = accion == "navegador"  # la impresora está en la computadora de quien mira
+            usuarios.registrar(con, request.state.usuario,
+                               "Imprimió etiquetas" if en_navegador else "Descargó etiquetas en PDF",
                                f"{n} de {producto['codigo']} {producto['nombre_interno']}")
             request.state.anotado = True
             titulo = f"Etiquetas {producto['nombre_interno']}"
             return _documento([producto] * n, titulo, producto["codigo"], "a4" if accion == "a4" else "rollo",
-                              con_precio, con)
+                              con_precio, con, imprimir=en_navegador)
     except (inv.ErrorNegocio, impresora.ErrorImpresora) as exc:
         avisar(request, f"😕 {exc}", "error")
         return ir(f"/etiquetas?producto_id={producto_id}")

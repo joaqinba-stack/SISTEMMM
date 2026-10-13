@@ -133,7 +133,16 @@ def test_etiquetas_tamano_pdf_e_impresora(monkeypatch):
         nuevo_producto(c, "Molde A", cantidad="3", costo="3000")
         r = c.get("/etiquetas")
         assert "Tamaño de la etiqueta" in r.text and "Cómo conectar la impresora" in r.text
-        assert "🖨️ Imprimir</button>" not in r.text  # sin impresora configurada solo hay PDF
+        # sin impresora en el servidor se imprime con la de la computadora de quien mira la página
+        assert 'value="navegador" formtarget="_blank"' in r.text and 'value="imprimir"' not in r.text
+        assert 'href="/etiquetas/factura/1.pdf?imprimir=1" target="_blank"' in r.text
+        r = c.get("/etiquetas/factura/1.pdf?imprimir=1")
+        assert r.headers["content-disposition"].startswith("inline")
+        assert PdfReader(io.BytesIO(r.content)).trailer["/Root"]["/OpenAction"]["/JS"] == "this.print();"
+        r = c.post("/etiquetas/producto", data={"producto_id": "1", "cantidad": "2", "accion": "navegador"})
+        assert r.headers["content-disposition"].startswith("inline") and len(PdfReader(io.BytesIO(r.content)).pages) == 2
+        assert "/OpenAction" not in PdfReader(io.BytesIO(c.get("/etiquetas/factura/1.pdf").content)).trailer["/Root"]
+        r = c.get("/etiquetas")
 
         r = c.post("/etiquetas/tamano", data={"tamano": "40x40"})
         assert "40 × 40 mm" in r.text and 'value="40x40" checked' in r.text
