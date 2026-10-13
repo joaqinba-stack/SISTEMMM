@@ -60,6 +60,44 @@ python run.py
 Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma red WiFi, usá
 `http://IP-DE-LA-COMPU:8000`.
 
+## Instalar en un servidor (VPS)
+
+Para que el sistema esté siempre prendido y se entre con una dirección propia. Alcanza con un
+servidor chico (1 vCPU y 2 GB de memoria) con Ubuntu y Docker.
+
+1. Hacé que un nombre apunte a la IP del servidor (un registro **A** en tu dominio). Si todavía no
+   hay dominio, sirve la IP con guiones y `.sslip.io`, por ejemplo `203-0-113-10.sslip.io`.
+2. En el servidor:
+
+   ```bash
+   git clone https://github.com/joaqinba-stack/SISTEMMM.git inventario
+   cd inventario
+   cp .env.example .env
+   nano .env            # completar DOMINIO, TELEGRAM_TOKEN y ANTHROPIC_API_KEY
+   docker compose up -d --build
+   ```
+
+3. Abrí `https://TU-DOMINIO` y **creá enseguida la primera cuenta**: es la del administrador.
+
+Caddy pide y renueva solo el certificado (el candado). Hacen falta abiertos los puertos 80 y 443.
+
+- **Actualizar** a una versión nueva: `git pull && docker compose up -d --build`
+- **Ver qué pasa:** `docker compose logs -f app`
+- **Copia de seguridad** de la base, las fotos y las facturas (hacela seguido y guardala fuera del servidor):
+
+  ```bash
+  docker run --rm -v inventario_datos:/datos -v "$PWD":/copia alpine tar czf /copia/respaldo-$(date +%F).tgz -C /datos .
+  ```
+
+- **Rescatar una cuenta:** `docker compose exec app python scripts/restablecer_acceso.py USUARIO --admin`
+- **El bot de Telegram** tiene que correr en un solo lugar: si se prende en el servidor, hay que
+  apagarlo en la computadora (el mismo token no funciona en dos lados a la vez).
+- **La impresora de etiquetas** se conecta a la computadora desde la que se entra a la página
+  (con su driver instalado). El botón **🖨️ Imprimir** abre la ventana de impresión del navegador
+  con una etiqueta por página del tamaño exacto del rollo. La primera vez hay que elegir ahí la
+  impresora, el tamaño de papel de la etiqueta, sin márgenes y escala 100%. El botón de imprimir
+  del bot de Telegram solo aparece cuando la impresora está conectada al propio servidor.
+
 ## Cuentas de usuario
 
 Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla de entrada están

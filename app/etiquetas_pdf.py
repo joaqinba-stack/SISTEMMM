@@ -6,6 +6,7 @@ import math
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfdoc
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
@@ -152,13 +153,23 @@ def _controlar(productos: list) -> None:
         raise inv.ErrorNegocio(f"Son demasiadas etiquetas. El máximo es {MAXIMO} por vez.")
 
 
-def rollo_pdf(productos: list, tamano_clave: str, titulo: str, con_precio: bool = True) -> bytes:
+def _abrir_imprimiendo(c: canvas.Canvas) -> None:
+    """Hace que el PDF, al abrirse en el navegador, muestre solo la ventana de impresión.
+    Así se imprime en la impresora de la computadora desde la que se entra a la página."""
+    c._doc.Catalog.OpenAction = pdfdoc.PDFDictionary({
+        "S": pdfdoc.PDFName("JavaScript"), "JS": pdfdoc.PDFString("this.print();")})
+
+
+def rollo_pdf(productos: list, tamano_clave: str, titulo: str, con_precio: bool = True,
+              imprimir: bool = False) -> bytes:
     """Una etiqueta por página, del tamaño exacto del rollo (para imprimir con el driver)."""
     _controlar(productos)
     ancho, alto = tamano(tamano_clave)
     salida = io.BytesIO()
     c = canvas.Canvas(salida, pagesize=(ancho * mm, alto * mm))
     c.setTitle(titulo)
+    if imprimir:
+        _abrir_imprimiendo(c)
     for producto in productos:
         dibujar(PintorPdf(c, 0, 0, ancho, alto), producto, con_precio)
         c.showPage()

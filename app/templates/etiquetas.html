@@ -36,12 +36,14 @@
 {% else %}
 <details class="tarjeta como-imprimir" open>
   <summary>🖨️ Cómo conectar la impresora térmica (una sola vez)</summary>
+  <p>La impresora va conectada a <b>la computadora desde la que estás mirando esta página</b>:</p>
   <ol>
     <li>Conectá la impresora por USB a esta computadora e instalá su driver (viene en el CD o en la página de Xprinter).</li>
     <li>Poné el rollo de etiquetas adhesivas y fijate que el tamaño elegido arriba sea el del rollo.</li>
-    <li>Abrí el archivo <code>.env</code> y escribí el nombre de la impresora tal como aparece en <i>Impresoras</i> de Windows, por ejemplo <code>IMPRESORA_NOMBRE=Xprinter XP-365B</code>. Volvé a abrir el sistema.</li>
+    <li>Tocá <b>🖨️ Imprimir</b>: se abre la ventana de impresión con una etiqueta por página, del tamaño exacto del rollo.</li>
+    <li>La primera vez, en esa ventana elegí la impresora térmica, el <b>tamaño de papel</b> igual al de la etiqueta, <b>márgenes: ninguno</b> y <b>escala: 100%</b> (o «tamaño real»). El navegador lo recuerda.</li>
   </ol>
-  <p class="ayuda chica">Mientras tanto podés usar <b>⬇️ PDF</b>: se descarga un PDF con una etiqueta por página, del tamaño exacto del rollo, para imprimir desde la ventana de impresión.</p>
+  <p class="ayuda chica">Si la ventana de impresión no se abre sola, apretá <b>Ctrl + P</b> en la pestaña que se abrió. <b>⬇️ PDF</b> baja el mismo archivo para guardarlo o imprimirlo después.</p>
 </details>
 {% endif %}
 
@@ -69,8 +71,10 @@
                 <form method="post" action="/etiquetas/factura/{{ f.id }}/imprimir">
                   <button class="boton chico principal" type="submit">🖨️ Imprimir</button>
                 </form>
+                {% else %}
+                <a class="boton chico principal" href="/etiquetas/factura/{{ f.id }}.pdf?imprimir=1" target="_blank" rel="noopener">🖨️ Imprimir</a>
                 {% endif %}
-                <a class="boton chico {{ '' if impresora else 'principal' }}" href="/etiquetas/factura/{{ f.id }}.pdf">⬇️ PDF</a>
+                <a class="boton chico" href="/etiquetas/factura/{{ f.id }}.pdf">⬇️ PDF</a>
               </div>
             </td>
           </tr>
@@ -102,8 +106,10 @@
       <div class="botones">
         {% if impresora %}
         <button class="boton grande principal" type="submit" name="accion" value="imprimir">🖨️ Imprimir</button>
+        {% else %}
+        <button class="boton grande principal" type="submit" name="accion" value="navegador" formtarget="_blank">🖨️ Imprimir</button>
         {% endif %}
-        <button class="boton grande {{ '' if impresora else 'principal' }}" type="submit" name="accion" value="pdf">⬇️ PDF</button>
+        <button class="boton grande" type="submit" name="accion" value="pdf">⬇️ PDF</button>
       </div>
       <p class="ayuda chica">¿Sin impresora térmica? <button class="enlace" type="submit" name="accion" value="a4">Bajá una hoja A4 de 21 etiquetas</button> para una impresora común.</p>
     </form>

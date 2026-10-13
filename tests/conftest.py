@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault("SECRET_KEY", "pruebas")
 os.environ["TELEGRAM_TOKEN"] = ""
+os.environ["URL_PUBLICA"] = ""  # sin https, para que la sesión funcione en el navegador de prueba
 
 from app import config, db  # noqa: E402
 
