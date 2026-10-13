@@ -1,5 +1,16 @@
-# Caddy pide y renueva solo el certificado HTTPS del dominio.
+# Caddy pide y renueva solo el certificado HTTPS de la dirección (dominio o IP pública).
+{
+	# Cuando se entra por la IP, el navegador no dice a qué nombre va: se le da este certificado.
+	default_sni {$DOMINIO}
+}
+
 {$DOMINIO} {
+	tls {
+		issuer acme {
+			# «classic» para un dominio; «shortlived» cuando DOMINIO es la IP del servidor.
+			profile {$CERTIFICADO:classic}
+		}
+	}
 	encode gzip
 	reverse_proxy app:8000
 }

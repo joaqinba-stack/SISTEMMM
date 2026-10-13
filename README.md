@@ -65,15 +65,16 @@ Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma r
 Para que el sistema esté siempre prendido y se entre con una dirección propia. Alcanza con un
 servidor chico (1 vCPU y 2 GB de memoria) con Ubuntu y Docker.
 
-1. Hacé que un nombre apunte a la IP del servidor (un registro **A** en tu dominio). Si todavía no
-   hay dominio, sirve la IP con guiones y `.sslip.io`, por ejemplo `203-0-113-10.sslip.io`.
+1. Hacé que un nombre apunte a la IP del servidor (un registro **A** en tu dominio) y ponelo en
+   `DOMINIO`. Si todavía no hay dominio, poné en `DOMINIO` la IP pública del servidor y
+   `CERTIFICADO=shortlived`: se entra por `https://LA-IP` con candado igual.
 2. En el servidor:
 
    ```bash
    git clone https://github.com/joaqinba-stack/SISTEMMM.git inventario
    cd inventario
    cp .env.example .env
-   nano .env            # completar DOMINIO, TELEGRAM_TOKEN y ANTHROPIC_API_KEY
+   nano .env            # completar DOMINIO (y CERTIFICADO), TELEGRAM_TOKEN y ANTHROPIC_API_KEY
    docker compose up -d --build
    ```
 
