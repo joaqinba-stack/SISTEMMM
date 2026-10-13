@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Inventario{% endblock %}</title>
-  <link rel="stylesheet" href="/static/estilo.css?v=11">
+  <link rel="stylesheet" href="/static/estilo.css?v=12">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
 </head>
 <body>
@@ -14,6 +14,9 @@
       <a href="/productos" class="{{ 'activo' if request.url.path.startswith(('/productos', '/etiquetas')) }}">📦<span>Productos y stock</span></a>
       <a href="/compras" class="{{ 'activo' if request.url.path.startswith('/compras') }}">🧾<span>Compras</span></a>
       <a href="/vender" class="{{ 'activo' if request.url.path == '/vender' }}">💰<span>Vender</span></a>
+      {% if usuario %}
+      <a href="/cuenta" class="{{ 'activo' if request.url.path.startswith(('/cuenta', '/usuarios', '/actividad', '/reportes')) }}"><span class="campana">👤{% if por_aprobar %}<b class="globo" aria-label="{{ por_aprobar }} cuentas por aprobar">{{ por_aprobar }}</b>{% endif %}</span><span>{{ usuario.nombre|truncate(14, True, '…') }}</span></a>
+      {% endif %}
     </nav>
   </header>
 
@@ -24,8 +27,8 @@
     {% block contenido %}{% endblock %}
   </main>
 
-  {% if con_clave %}
-  <footer class="pie no-imprimir"><a href="/salir">Cerrar sesión</a></footer>
+  {% if usuario %}
+  <footer class="pie no-imprimir">{{ usuario.nombre }} · <a href="/cuenta">Mi cuenta</a> · <a href="/salir">Cerrar sesión</a></footer>
   {% endif %}
   <script src="/static/app.js?v=6"></script>
 </body>

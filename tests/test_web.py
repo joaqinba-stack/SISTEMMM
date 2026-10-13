@@ -9,8 +9,14 @@ from app import config, db, impresora, inventario as inv
 from app.main import app
 
 
+CLAVE = "clave-de-prueba"
+
+
 def cliente():
-    return TestClient(app)
+    """Navegador de prueba ya adentro: la primera cuenta que se crea es la del administrador."""
+    c = TestClient(app)
+    c.post("/cuenta/nueva", data={"nombre": "Ana", "usuario": "ana", "clave": CLAVE, "repetir": CLAVE})
+    return c
 
 
 def nuevo_producto(c, nombre="Molde vela corazón", cantidad="6", costo="52.542", **extra):
@@ -204,14 +210,16 @@ def test_notificaciones_con_badge():
         assert re.search(r'class="globo"[^>]*>1<', r.text)
 
 
-def test_pide_clave(monkeypatch):
-    monkeypatch.setattr(config, "CLAVE_ACCESO", "1234")
+def test_pide_usuario_y_contrasena():
     with cliente() as c:
+        assert c.get("/productos").url.path == "/productos"
+        assert c.get("/salir").url.path == "/login"
         r = c.get("/productos")
         assert r.url.path == "/login"
-        r = c.post("/login", data={"clave": "mal"})
-        assert "no es correcta" in r.text
-        r = c.post("/login", data={"clave": "1234"})
+        assert 'href="/cuenta/nueva"' in r.text and 'href="/cuenta/recuperar"' in r.text
+        r = c.post("/login", data={"usuario": "ana", "clave": "otra-cosa"})
+        assert "no son correctos" in r.text
+        r = c.post("/login", data={"usuario": "ANA ", "clave": CLAVE})
         assert r.url.path == "/"
         assert c.get("/productos").url.path == "/productos"
 

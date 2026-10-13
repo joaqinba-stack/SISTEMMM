@@ -90,7 +90,7 @@
 <h2>Últimas ventas</h2>
 <div class="tabla-envoltura">
 <table class="tabla con-fotos">
-  <thead><tr><th>Fecha</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th class="num">Ganancia</th><th>Pago</th></tr></thead>
+  <thead><tr><th>Fecha</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th class="num">Ganancia</th><th>Pago</th><th>Vendió</th></tr></thead>
   <tbody>
   {% for v in ventas %}
     <tr>
@@ -100,9 +100,10 @@
       <td data-titulo="Total" class="num"><b>{{ v.total|gs }}</b></td>
       <td data-titulo="Ganancia" class="num">{{ v.ganancia|gs }}</td>
       <td data-titulo="Pago">{{ v.medio_pago }}</td>
+      <td data-titulo="Vendió">{{ v.vendedor or '—' }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6">Todavía no hay ventas.</td></tr>
+    <tr><td colspan="7">Todavía no hay ventas.</td></tr>
   {% endfor %}
   </tbody>
 </table>

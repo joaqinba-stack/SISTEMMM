@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS ventas (
     cliente TEXT NOT NULL DEFAULT '',
     medio_pago TEXT NOT NULL DEFAULT '',
     cliente_id INTEGER REFERENCES clientes(id),
+    usuario_id INTEGER REFERENCES usuarios(id),  -- quién registró la venta
     creado TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -118,6 +119,33 @@ CREATE TABLE IF NOT EXISTS ajustes (
     valor TEXT NOT NULL
 );
 
+-- Cuentas para entrar al sistema. La primera que se crea es administradora; las demás
+-- quedan pendientes hasta que un administrador las aprueba.
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY,
+    usuario TEXT NOT NULL UNIQUE,       -- con lo que se entra, en minúsculas
+    nombre TEXT NOT NULL,               -- cómo se muestra en pantalla y en los reportes
+    clave_hash TEXT NOT NULL,
+    recuperacion_hash TEXT NOT NULL,    -- código para cambiar la contraseña si se olvida
+    rol TEXT NOT NULL DEFAULT 'usuario',        -- 'admin' o 'usuario'
+    estado TEXT NOT NULL DEFAULT 'pendiente',   -- 'pendiente', 'activo' o 'bloqueado'
+    intentos INTEGER NOT NULL DEFAULT 0,        -- contraseñas o códigos errados seguidos
+    bloqueado_hasta TEXT,
+    sesion INTEGER NOT NULL DEFAULT 1,  -- cambia con la contraseña: cierra las otras sesiones
+    creado TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Registro de todo lo que hace cada usuario.
+CREATE TABLE IF NOT EXISTS actividad (
+    id INTEGER PRIMARY KEY,
+    fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    usuario_id INTEGER REFERENCES usuarios(id),
+    usuario TEXT NOT NULL DEFAULT '',   -- el nombre en ese momento (o «Telegram: …»)
+    accion TEXT NOT NULL,
+    detalle TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS ix_actividad_fecha ON actividad(fecha, id);
 CREATE INDEX IF NOT EXISTS ix_lotes_producto ON lotes(producto_id, fecha, id);
 CREATE INDEX IF NOT EXISTS ix_lotes_compra ON lotes(compra_id);
 """
@@ -153,6 +181,9 @@ def inicializar() -> None:
         columnas = {fila[1] for fila in con.execute("PRAGMA table_info(ventas)")}
         if "cliente_id" not in columnas:
             con.execute("ALTER TABLE ventas ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)")
+        # Bases creadas antes de existir las cuentas de usuario.
+        if "usuario_id" not in columnas:
+            con.execute("ALTER TABLE ventas ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id)")
         # El código de barra es el código del producto (P-00001): se pasan los números viejos.
         if con.execute("SELECT 1 FROM productos WHERE codigo_barra != codigo LIMIT 1").fetchone():
             con.execute("UPDATE productos SET codigo_barra = '~' || id")

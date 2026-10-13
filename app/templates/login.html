@@ -1,23 +1,19 @@
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Entrar al inventario</title>
-  <link rel="stylesheet" href="/static/estilo.css?v=11">
-</head>
-<body>
-  <main class="contenido angosto">
-    <h1>📦 Inventario</h1>
-    {% for tipo, texto in avisos %}
-      <div class="aviso aviso-{{ tipo }}" role="alert">{{ texto }}</div>
-    {% endfor %}
-    <form method="post" action="/login" class="formulario">
-      <label>Escribí la clave para entrar
-        <input type="password" name="clave" autofocus autocomplete="current-password">
-      </label>
-      <div class="botones"><button class="boton grande principal" type="submit">Entrar</button></div>
-    </form>
-  </main>
-</body>
-</html>
+{% extends "base_acceso.html" %}
+{% block contenido %}
+{% if sin_cuentas %}
+  <div class="tarjeta alerta">Todavía no hay ninguna cuenta. <a href="/cuenta/nueva">Creá la primera</a>: va a ser la del administrador.</div>
+{% endif %}
+<form method="post" action="/login" class="formulario">
+  <label>Usuario
+    <input name="usuario" value="{{ usuario_escrito or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" {{ 'autofocus' if not usuario_escrito }}>
+  </label>
+  <label>Contraseña
+    <input type="password" name="clave" autocomplete="current-password" {{ 'autofocus' if usuario_escrito }}>
+  </label>
+  <div class="botones"><button class="boton grande principal" type="submit">Entrar</button></div>
+</form>
+<div class="enlaces-acceso">
+  <a class="boton" href="/cuenta/nueva">✨ Crear una cuenta</a>
+  <a class="boton" href="/cuenta/recuperar">🔑 Olvidé mi contraseña</a>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titulo %}Registro de actividad{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>📋 Registro de actividad</h1>
+  <div class="botones">
+    <a class="boton" href="/cuenta">← Mi cuenta</a>
+    <a class="boton" href="/usuarios">👥 Usuarios</a>
+  </div>
+</div>
+<p class="ayuda">Todo lo que hizo cada usuario, lo más nuevo primero.</p>
+
+<form method="get" action="/actividad" class="formulario filtros-panel">
+  <label>Usuario
+    <select name="usuario_id">
+      <option value="">Todos</option>
+      {% for c in cuentas %}<option value="{{ c.id }}" {{ 'selected' if filtros.usuario_id == c.id|string }}>{{ c.nombre }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Desde
+    <input type="date" name="desde" value="{{ filtros.desde }}">
+  </label>
+  <label>Hasta
+    <input type="date" name="hasta" value="{{ filtros.hasta }}">
+  </label>
+  <div class="botones">
+    <button class="boton principal" type="submit">🔎 Ver</button>
+    <a class="boton" href="/actividad">✖ Quitar filtros</a>
+  </div>
+</form>
+
+<div class="tabla-envoltura">
+<table class="tabla">
+  <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Qué hizo</th><th>Detalle</th></tr></thead>
+  <tbody>
+  {% for f in filas %}
+    <tr>
+      <td data-titulo="Fecha y hora" class="mono">{{ f.fecha[:10]|fecha }} {{ f.fecha[11:16] }}</td>
+      <td data-titulo="Usuario">{{ f.usuario or '—' }}</td>
+      <td data-titulo="Qué hizo"><b>{{ f.accion }}</b></td>
+      <td data-titulo="Detalle">{{ f.detalle }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">No hay actividad con esos filtros.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if filas|length == limite %}<p class="ayuda chica">Se muestran los últimos {{ limite }} movimientos. Usá las fechas para ver otros.</p>{% endif %}
+{% endblock %}

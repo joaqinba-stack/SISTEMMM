@@ -270,6 +270,10 @@ def parecido(a: str, b: str) -> float:
     return max(difflib.SequenceMatcher(None, a_n, b_n).ratio(), jaccard, orden)
 
 
+PARECIDO_SEGURO = 0.86  # desde acá se toma como el mismo producto sin preguntar
+PARECIDO_DUDOSO = 0.6   # desde acá se ofrece como «¿será este?»
+
+
 def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int | None = None):
     """Busca el producto que corresponde a un renglón de factura. Devuelve la fila o None.
     No importa el proveedor: el mismo producto se puede comprar en distintos lugares.
@@ -282,16 +286,51 @@ def buscar_coincidencia(con: sqlite3.Connection, descripcion: str, prov_id: int 
            WHERE a.clave = ?""", (objetivo,)).fetchone()
     if aprendido:
         return aprendido
+    mejor, puntaje = None, 0.0
+    for fila, p in _puntajes(con, descripcion):
+        if p > puntaje:
+            mejor, puntaje = fila, p
+    return mejor if puntaje >= PARECIDO_SEGURO else None
+
+
+def _alias_por_producto(con: sqlite3.Connection) -> dict:
     alias = {}
     for fila in con.execute("SELECT producto_id, texto FROM alias_productos").fetchall():
         alias.setdefault(fila["producto_id"], []).append(fila["texto"])
-    mejor, puntaje = None, 0.0
-    for fila in con.execute("SELECT * FROM productos").fetchall():
-        for candidato in (fila["nombre_proveedor"], fila["nombre_interno"], fila["codigo"], *alias.get(fila["id"], [])):
-            p = parecido(descripcion, candidato or "")
-            if p > puntaje:
-                mejor, puntaje = fila, p
-    return mejor if puntaje >= 0.86 else None
+    return alias
+
+
+def _puntajes(con: sqlite3.Connection, descripcion: str) -> list:
+    """[(producto, parecido)]: el mejor parecido de cada producto contra todos sus nombres."""
+    alias = _alias_por_producto(con)
+    return [
+        (fila, max(parecido(descripcion, candidato or "") for candidato in (
+            fila["nombre_proveedor"], fila["nombre_interno"], fila["codigo"], *alias.get(fila["id"], []))))
+        for fila in con.execute("SELECT * FROM productos").fetchall()
+    ]
+
+
+def parecidos(con: sqlite3.Connection, descripcion: str, limite: int = 3) -> list:
+    """Productos que se parecen a un renglón de factura sin llegar a ser una coincidencia segura."""
+    candidatos = [(fila, p) for fila, p in _puntajes(con, descripcion) if p >= PARECIDO_DUDOSO]
+    candidatos.sort(key=lambda par: par[1], reverse=True)
+    return [fila for fila, _ in candidatos[:limite]]
+
+
+def catalogo_para_ia(con: sqlite3.Connection) -> list[tuple[str, str]]:
+    """[(código, nombre)] de todos los productos. El nombre lleva entre paréntesis cómo figuró
+    en facturas anteriores (nombre del proveedor y nombres aprendidos)."""
+    alias = _alias_por_producto(con)
+    catalogo = []
+    for fila in con.execute("SELECT * FROM productos ORDER BY nombre_interno COLLATE NOCASE").fetchall():
+        vistos, otros = {normalizar(fila["nombre_interno"])}, []
+        for texto in (fila["nombre_proveedor"], *alias.get(fila["id"], [])):
+            if normalizar(texto) not in vistos | {""}:
+                vistos.add(normalizar(texto))
+                otros.append(texto.strip())
+        nombre = fila["nombre_interno"] + (f" (también: {'; '.join(otros)})" if otros else "")
+        catalogo.append((fila["codigo"], nombre))
+    return catalogo
 
 
 def agregar_alias(con: sqlite3.Connection, producto_id: int, texto: str) -> None:
@@ -422,7 +461,7 @@ def borrar_lote(con, lote_id: int) -> None:
 
 # ---------------------------------------------------------------- ventas (FIFO)
 
-def registrar_venta(con, items, cliente_id=None, medio_pago="", fecha=None) -> dict:
+def registrar_venta(con, items, cliente_id=None, medio_pago="", fecha=None, usuario_id=None) -> dict:
     """Guarda una venta con uno o más productos. El precio sale siempre de la ficha del
     producto. Si a algún producto no le alcanza el stock no se guarda nada. Cada producto
     descuenta del lote más viejo primero (FIFO) y se calcula el costo y la ganancia reales."""
@@ -452,8 +491,8 @@ def registrar_venta(con, items, cliente_id=None, medio_pago="", fecha=None) -> d
         productos[producto_id] = producto
 
     venta_id = con.execute(
-        "INSERT INTO ventas (fecha, cliente_id, medio_pago) VALUES (?, ?, ?)",
-        (leer_fecha(fecha), cliente_id or None, medio_pago or ""),
+        "INSERT INTO ventas (fecha, cliente_id, medio_pago, usuario_id) VALUES (?, ?, ?, ?)",
+        (leer_fecha(fecha), cliente_id or None, medio_pago or "", usuario_id),
     ).lastrowid
     total = costo_total = 0.0
     for producto_id, cantidad in pedidos.items():
@@ -614,33 +653,73 @@ def obtener_lote(con, lote_id: int):
     return con.execute(SQL_COMPRAS + " WHERE l.id = ?", (lote_id,)).fetchone()
 
 
-def listar_ventas(con):
-    sql = """
+def _filtros_ventas(desde=None, hasta=None, usuario_id=None) -> tuple[str, list]:
+    """usuario_id: una cuenta, o 0 para las ventas sin usuario (anteriores a las cuentas)."""
+    filtros, valores = [], []
+    if desde:
+        filtros.append("v.fecha >= ?")
+        valores.append(leer_fecha(desde))
+    if hasta:
+        filtros.append("v.fecha <= ?")
+        valores.append(leer_fecha(hasta))
+    if usuario_id == 0:
+        filtros.append("v.usuario_id IS NULL")
+    elif usuario_id:
+        filtros.append("v.usuario_id = ?")
+        valores.append(int(usuario_id))
+    return (" WHERE " + " AND ".join(filtros)) if filtros else "", valores
+
+
+def listar_ventas(con, desde=None, hasta=None, usuario_id=None):
+    donde, valores = _filtros_ventas(desde, hasta, usuario_id)
+    sql = f"""
     SELECT v.id, v.fecha, COALESCE(cl.nombre, v.cliente) AS cliente, v.medio_pago,
            vi.cantidad, vi.precio_unit, vi.costo_fifo,
            vi.cantidad * vi.precio_unit AS total,
            vi.cantidad * vi.precio_unit - vi.costo_fifo AS ganancia,
-           p.codigo, p.nombre_interno, p.imagen
+           p.codigo, p.nombre_interno, p.imagen,
+           v.usuario_id, COALESCE(u.nombre, '') AS vendedor
     FROM ventas v
     JOIN venta_items vi ON vi.venta_id = v.id
     JOIN productos p ON p.id = vi.producto_id
     LEFT JOIN clientes cl ON cl.id = v.cliente_id
+    LEFT JOIN usuarios u ON u.id = v.usuario_id
+    {donde}
     ORDER BY v.fecha DESC, v.id DESC, vi.id
     """
-    return con.execute(sql).fetchall()
+    return con.execute(sql, valores).fetchall()
 
 
-def ultimas_ventas(con, limite: int = 20) -> list[dict]:
+def ventas_por_usuario(con, desde=None, hasta=None, usuario_id=None):
+    """Una fila por cuenta con lo que vendió en el período, la que más vendió primero."""
+    donde, valores = _filtros_ventas(desde, hasta, usuario_id)
+    sql = f"""
+    SELECT v.usuario_id, COALESCE(u.nombre, '') AS vendedor,
+           COUNT(DISTINCT v.id) AS ventas, SUM(vi.cantidad) AS unidades,
+           SUM(vi.cantidad * vi.precio_unit) AS total,
+           SUM(vi.cantidad * vi.precio_unit - vi.costo_fifo) AS ganancia
+    FROM ventas v
+    JOIN venta_items vi ON vi.venta_id = v.id
+    LEFT JOIN usuarios u ON u.id = v.usuario_id
+    {donde}
+    GROUP BY v.usuario_id
+    ORDER BY total DESC
+    """
+    return con.execute(sql, valores).fetchall()
+
+
+def ultimas_ventas(con, limite: int = 20, **filtros) -> list[dict]:
     """Ventas agrupadas (una entrada por venta con sus productos), la más nueva primero."""
     ventas: dict[int, dict] = {}
-    for fila in listar_ventas(con):
+    for fila in listar_ventas(con, **filtros):
         venta = ventas.get(fila["id"])
         if venta is None:
             if len(ventas) == limite:
                 break
             venta = ventas[fila["id"]] = {
                 "id": fila["id"], "fecha": fila["fecha"], "cliente": fila["cliente"],
-                "medio_pago": fila["medio_pago"], "items": [], "total": 0.0, "ganancia": 0.0,
+                "medio_pago": fila["medio_pago"], "vendedor": fila["vendedor"],
+                "items": [], "total": 0.0, "ganancia": 0.0,
             }
         venta["items"].append(fila)
         venta["total"] += fila["total"]

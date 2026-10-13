@@ -1,0 +1,27 @@
+{% extends "base_acceso.html" %}
+{% block titulo %}Crear una cuenta{% endblock %}
+{% block contenido %}
+<h2>✨ Crear una cuenta</h2>
+{% if sin_cuentas %}
+  <div class="tarjeta alerta">Es la primera cuenta del sistema: va a ser la del <b>administrador</b> y entra enseguida.</div>
+{% else %}
+  <p class="ayuda">Después de crearla, un administrador tiene que aprobarla para que puedas entrar.</p>
+{% endif %}
+<form method="post" action="/cuenta/nueva" class="formulario">
+  <label>Tu nombre (así aparece en las ventas y en los reportes)
+    <input name="nombre" value="{{ nombre_escrito or '' }}" autocomplete="name" maxlength="60" required autofocus>
+  </label>
+  <label>Usuario para entrar (sin espacios, por ejemplo: <span class="mono">ana</span>)
+    <input name="usuario" value="{{ usuario_escrito or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false"
+           minlength="3" maxlength="30" pattern="[A-Za-z0-9._\-]+" required>
+  </label>
+  <label>Contraseña (8 letras o números como mínimo)
+    <input type="password" name="clave" autocomplete="new-password" minlength="8" required>
+  </label>
+  <label>Repetí la contraseña
+    <input type="password" name="repetir" autocomplete="new-password" minlength="8" required>
+  </label>
+  <div class="botones"><button class="boton grande principal" type="submit">Crear cuenta</button></div>
+</form>
+<div class="enlaces-acceso"><a class="boton" href="/login">← Ya tengo cuenta</a></div>
+{% endblock %}

@@ -88,6 +88,15 @@ def test_usuario_no_permitido(monkeypatch):
     extraer.assert_not_called()
 
 
+def test_sin_lista_de_permitidos_es_de_uso_libre(monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_USUARIOS_PERMITIDOS", set())
+    mensaje = MagicMock(reply_html=AsyncMock(), reply_text=AsyncMock())
+    update = SimpleNamespace(effective_user=SimpleNamespace(id=999), effective_message=mensaje)
+    asyncio.run(bot.cmd_inicio(update, None))
+    mensaje.reply_html.assert_called_once()
+    mensaje.reply_text.assert_not_called()
+
+
 def test_extraer_con_claude_simulado(monkeypatch):
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "clave-prueba")
     respuesta = SimpleNamespace(stop_reason="end_turn", content=[
@@ -138,8 +147,10 @@ def test_corregir_renglon_en_telegram_y_aprender(monkeypatch):
     asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=usuario, effective_message=mensaje), None))
     teclado = aviso.edit_text.call_args.kwargs["reply_markup"].inline_keyboard
     clave = teclado[0][0].callback_data.split(":")[1]
-    corregir = [b.callback_data for fila in teclado[1:] for b in fila]
-    assert corregir == [f"k:{clave}:0", f"k:{clave}:1"]
+    botones = [b.callback_data for fila in teclado[1:] for b in fila]
+    # el cortador se parece a uno que ya existe: se ofrece con un botón, además de Corregir
+    assert botones == [f"p:{clave}:1:{cortador['id']}", f"k:{clave}:0", f"k:{clave}:1"]
+    assert "Se parece a" in aviso.edit_text.call_args.args[0]
 
     contexto = SimpleNamespace(user_data={})
     def boton(datos):
@@ -209,3 +220,52 @@ def test_la_ia_recibe_la_lista_de_productos(monkeypatch):
     asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=SimpleNamespace(id=111),
                                                     effective_message=mensaje), None))
     assert ("P-00001", "Cortador de Pabilo") in extraer.call_args.args[2]
+
+
+def _cdc(nro="0010020000123", fecha="20261001") -> str:
+    base = "01" + "80012345" + "0" + nro + "2" + fecha + "1" + "123456789"
+    return base + str(factura_ia._dv_modulo11(base))
+
+
+def test_leer_cdc():
+    datos = factura_ia.leer_cdc(" ".join([_cdc()[i:i + 4] for i in range(0, 44, 4)]))
+    assert datos["nro_factura"] == "001-002-0000123" and datos["fecha"] == "2026-10-01"
+    assert datos["ruc_emisor"] == "80012345-0"
+    mal_leido = _cdc()[:20] + str((int(_cdc()[20]) + 1) % 10) + _cdc()[21:]
+    assert factura_ia.leer_cdc(mal_leido) is None
+    assert factura_ia.leer_cdc("") is None and factura_ia.leer_cdc("123") is None
+
+
+def test_el_cdc_corrige_numero_y_fecha():
+    leido = {**LEIDO, "nro_factura": "001-002-0000128", "fecha": "2026-10-07", "cdc": _cdc()}
+    compra = bot.preparar_compra(leido, None)
+    assert compra["nro_factura"] == "001-002-0000123" and compra["fecha"] == "2026-10-01"
+    texto = bot.texto_resumen(compra)
+    assert "confirmados con el CDC" in texto and "001-002-0000128" in texto
+
+    sin_cdc = bot.preparar_compra({**LEIDO, "cdc": "1234"}, None)  # CDC mal leído: no se usa
+    assert sin_cdc["nro_factura"] == LEIDO["nro_factura"] and not sin_cdc["avisos"]
+
+
+def test_avisa_si_los_renglones_no_suman_el_total():
+    assert not bot.preparar_compra({**LEIDO, "total_factura": 405000}, None)["avisos"]
+    compra = bot.preparar_compra({**LEIDO, "total_factura": 450000}, None)
+    assert "405.000" in compra["avisos"][0] and "450.000" in compra["avisos"][0]
+    assert "450.000" in bot.texto_resumen(compra)
+
+
+def test_resumen_muestra_el_texto_de_la_factura_junto_al_producto():
+    with db.conexion() as con:
+        pistola = inv.crear_producto(con, {"nombre_interno": "Pistola de calor chica"})
+    leido = {**LEIDO, "items": [{**LEIDO["items"][0], "codigo_existente": pistola["codigo"]}]}
+    texto = bot.texto_resumen(bot.preparar_compra(leido, None))
+    assert "Pistola de calor chica" in texto
+    assert "En la factura: «Pistola de Calor 50HZ 300W»" in texto
+
+
+def test_la_ia_recibe_tambien_los_nombres_aprendidos():
+    with db.conexion() as con:
+        p = inv.crear_producto(con, {"nombre_interno": "Cortador de Pabilo"})
+        inv.agregar_alias(con, p["id"], "CORT. PABILO INOX X1")
+        catalogo = dict(inv.catalogo_para_ia(con))
+    assert catalogo[p["codigo"]] == "Cortador de Pabilo (también: CORT. PABILO INOX X1)"

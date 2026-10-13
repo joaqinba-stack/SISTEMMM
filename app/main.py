@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from PIL import Image, ImageOps
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import codigos, config, db, etiquetas_pdf, exportar, graficos, impresora, inventario as inv
+from app import codigos, config, db, etiquetas_pdf, exportar, graficos, impresora, inventario as inv, usuarios
 from app.etiqueta_diseno import TAMANOS
 
 log = logging.getLogger(__name__)
@@ -57,15 +57,38 @@ plantillas.env.filters["cant"] = inv.cantidad_txt
 plantillas.env.filters["fecha"] = inv.fecha_txt
 
 
+SIN_SESION = ("/static", "/login", "/cuenta/nueva", "/cuenta/recuperar")
+SOLO_ADMIN = ("/usuarios", "/actividad")
+
+
 @app.middleware("http")
-async def exigir_clave(request: Request, siguiente):
-    libre = request.url.path.startswith(("/static", "/login"))
-    if config.CLAVE_ACCESO and not libre and not request.session.get("ok"):
+async def exigir_sesion(request: Request, siguiente):
+    """Sin una cuenta activa solo se ven las pantallas de entrada. Lo que cambia datos queda
+    en el registro de actividad aunque la ruta no lo anote."""
+    request.state.usuario = None
+    request.state.anotado = False
+    if request.session.get("uid"):
+        with db.conexion() as con:
+            cuenta = usuarios.obtener(con, request.session["uid"])
+        if cuenta and cuenta["estado"] == "activo" and cuenta["sesion"] == request.session.get("sv"):
+            request.state.usuario = cuenta
+        else:  # la bloquearon o cambió la contraseña desde otro lado
+            request.session.clear()
+    ruta = request.url.path
+    if request.state.usuario is None and not ruta.startswith(SIN_SESION):
         return RedirectResponse("/login", status_code=303)
-    return await siguiente(request)
+    if ruta.startswith(SOLO_ADMIN) and request.state.usuario["rol"] != "admin":
+        avisar(request, "Esa pantalla es solo para administradores.", "error")
+        return RedirectResponse("/", status_code=303)
+    respuesta = await siguiente(request)
+    if (request.method == "POST" and request.state.usuario is not None
+            and not request.state.anotado and respuesta.status_code < 400):
+        with db.conexion() as con:
+            usuarios.registrar(con, request.state.usuario, "Acción", ruta)
+    return respuesta
 
 
-# Se agrega después para que corra antes que exigir_clave (y la sesión ya exista).
+# Se agrega después para que corra antes que exigir_sesion (y la sesión ya exista).
 app.add_middleware(SessionMiddleware, secret_key=config.clave_secreta(),
                    max_age=60 * 60 * 24 * 90, same_site="lax")
 
@@ -74,18 +97,41 @@ app.add_middleware(SessionMiddleware, secret_key=config.clave_secreta(),
 
 def avisar(request: Request, texto: str, tipo: str = "ok") -> None:
     request.session.setdefault("avisos", []).append([tipo, texto])
+    if tipo == "error":  # lo que se rechazó no cambió nada: no va al registro de actividad
+        request.state.anotado = True
+
+
+def anotar(request: Request, accion: str, detalle: str = "") -> None:
+    """Deja la acción en el registro de actividad, a nombre de quien está en sesión."""
+    request.state.anotado = True
+    with db.conexion() as con:
+        usuarios.registrar(con, request.state.usuario, accion, detalle)
+
+
+def abrir_sesion(request: Request, cuenta) -> None:
+    request.session.clear()
+    request.session.update(uid=cuenta["id"], sv=cuenta["sesion"])
 
 
 def pagina(request: Request, nombre: str, **contexto) -> HTMLResponse:
     avisos = request.session.pop("avisos", [])
+    usuario = request.state.usuario
     with db.conexion() as con:
         pendientes = inv.notificaciones(con)
+        por_aprobar = usuarios.pendientes(con) if usuario and usuario["rol"] == "admin" else 0
     cantidad = len({p["id"] for lista in pendientes.values() for p in lista})
     return plantillas.TemplateResponse(
         request, nombre,
-        {"avisos": avisos, "con_clave": bool(config.CLAVE_ACCESO),
+        {"avisos": avisos, "usuario": usuario, "por_aprobar": por_aprobar,
          "cantidad_avisos": cantidad, **contexto},
     )
+
+
+def pagina_codigo(request: Request, cuenta, codigo: str, motivo: str) -> HTMLResponse:
+    """Muestra un código de recuperación recién creado. Es la única vez que se ve."""
+    respuesta = pagina(request, "cuenta_codigo.html", cuenta=cuenta, codigo=codigo, motivo=motivo)
+    respuesta.headers["Cache-Control"] = "no-store"
+    return respuesta
 
 
 def json_para_html(datos) -> str:
@@ -137,22 +183,187 @@ def excel(contenido: bytes, nombre: str) -> Response:
 
 @app.get("/login", response_class=HTMLResponse)
 def login(request: Request):
-    return pagina(request, "login.html")
+    if request.state.usuario:
+        return ir("/")
+    with db.conexion() as con:
+        sin_cuentas = not usuarios.listar(con)
+    return pagina(request, "login.html", sin_cuentas=sin_cuentas)
 
 
 @app.post("/login")
-def login_enviar(request: Request, clave: str = Form("")):
-    if not config.CLAVE_ACCESO or clave.strip() == config.CLAVE_ACCESO:
-        request.session["ok"] = True
-        return ir("/")
-    avisar(request, "La clave no es correcta. Probá de nuevo.", "error")
-    return ir("/login")
+def login_enviar(request: Request, usuario: str = Form(""), clave: str = Form("")):
+    with db.conexion() as con:
+        cuenta, error = usuarios.entrar(con, usuario, clave)
+        if cuenta:
+            usuarios.registrar(con, cuenta, "Entró al sistema")
+    if not cuenta:
+        avisar(request, error, "error")
+        return pagina(request, "login.html", usuario_escrito=usuario.strip())
+    abrir_sesion(request, cuenta)
+    return ir("/")
 
 
 @app.get("/salir")
 def salir(request: Request):
+    anotar(request, "Salió del sistema")
     request.session.clear()
     return ir("/login")
+
+
+@app.get("/cuenta/nueva", response_class=HTMLResponse)
+def cuenta_nueva(request: Request):
+    with db.conexion() as con:
+        sin_cuentas = not usuarios.listar(con)
+    return pagina(request, "cuenta_nueva.html", sin_cuentas=sin_cuentas)
+
+
+@app.post("/cuenta/nueva")
+def cuenta_nueva_guardar(request: Request, nombre: str = Form(""), usuario: str = Form(""),
+                         clave: str = Form(""), repetir: str = Form("")):
+    try:
+        with db.conexion() as con:
+            cuenta, codigo = usuarios.crear(con, usuario, nombre, clave, repetir)
+            usuarios.registrar(con, cuenta, "Creó su cuenta", usuarios.ESTADOS[cuenta["estado"]])
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        with db.conexion() as con:
+            sin_cuentas = not usuarios.listar(con)
+        return pagina(request, "cuenta_nueva.html", sin_cuentas=sin_cuentas,
+                      nombre_escrito=nombre.strip(), usuario_escrito=usuario.strip())
+    if cuenta["estado"] == "activo":  # la primera cuenta es la del administrador y entra enseguida
+        abrir_sesion(request, cuenta)
+    return pagina_codigo(request, cuenta, codigo, "nueva")
+
+
+@app.get("/cuenta/recuperar", response_class=HTMLResponse)
+def cuenta_recuperar(request: Request):
+    return pagina(request, "cuenta_recuperar.html")
+
+
+@app.post("/cuenta/recuperar")
+def cuenta_recuperar_guardar(request: Request, usuario: str = Form(""), codigo: str = Form(""),
+                             clave: str = Form(""), repetir: str = Form("")):
+    with db.conexion() as con:
+        nuevo, error = usuarios.recuperar(con, usuario, codigo, clave, repetir)
+    if not nuevo:
+        avisar(request, error, "error")
+        return pagina(request, "cuenta_recuperar.html", usuario_escrito=usuario.strip())
+    request.session.clear()
+    return pagina_codigo(request, None, nuevo, "recuperada")
+
+
+@app.get("/cuenta", response_class=HTMLResponse)
+def cuenta(request: Request):
+    return pagina(request, "cuenta.html", roles=usuarios.ROLES)
+
+
+@app.post("/cuenta/clave")
+def cuenta_clave(request: Request, actual: str = Form(""), clave: str = Form(""), repetir: str = Form("")):
+    try:
+        with db.conexion() as con:
+            request.session["sv"] = usuarios.cambiar_clave(con, request.state.usuario["id"], actual, clave, repetir)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir("/cuenta")
+    anotar(request, "Cambió su contraseña")
+    avisar(request, "✅ Contraseña cambiada. Las otras sesiones abiertas con esta cuenta se cerraron.")
+    return ir("/cuenta")
+
+
+@app.post("/cuenta/codigo")
+def cuenta_codigo(request: Request, actual: str = Form("")):
+    yo = request.state.usuario
+    with db.conexion() as con:
+        if not usuarios.clave_correcta(con, yo["id"], actual):
+            avisar(request, "La contraseña actual no es correcta.", "error")
+            return ir("/cuenta")
+        codigo = usuarios.regenerar_codigo(con, yo["id"])
+    anotar(request, "Generó un código de recuperación nuevo")
+    return pagina_codigo(request, yo, codigo, "propio")
+
+
+# ---------------------------------------------------------------- usuarios (solo administradores)
+
+@app.get("/usuarios", response_class=HTMLResponse)
+def usuarios_lista(request: Request):
+    with db.conexion() as con:
+        return pagina(request, "usuarios.html", cuentas=usuarios.listar(con),
+                      roles=usuarios.ROLES, estados=usuarios.ESTADOS)
+
+
+@app.post("/usuarios/{usuario_id}/estado")
+def usuario_estado(request: Request, usuario_id: int, estado: str = Form("")):
+    try:
+        with db.conexion() as con:
+            cuenta = usuarios.cambiar_estado(con, usuario_id, estado)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir("/usuarios")
+    hecho = "Habilitó la cuenta" if estado == "activo" else "Bloqueó la cuenta"
+    anotar(request, hecho, f"{cuenta['nombre']} ({cuenta['usuario']})")
+    avisar(request, f"✅ {hecho} de {cuenta['nombre']}.")
+    return ir("/usuarios")
+
+
+@app.post("/usuarios/{usuario_id}/rol")
+def usuario_rol(request: Request, usuario_id: int, rol: str = Form("")):
+    try:
+        with db.conexion() as con:
+            cuenta = usuarios.cambiar_rol(con, usuario_id, rol)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir("/usuarios")
+    anotar(request, "Cambió el perfil de una cuenta",
+           f"{cuenta['nombre']} ({cuenta['usuario']}) ahora es {usuarios.ROLES[rol]}")
+    avisar(request, f"✅ {cuenta['nombre']} ahora es {usuarios.ROLES[rol]}.")
+    return ir("/usuarios")
+
+
+@app.post("/usuarios/{usuario_id}/codigo")
+def usuario_codigo(request: Request, usuario_id: int):
+    """Para quien olvidó la contraseña y perdió su código: el administrador le genera otro."""
+    try:
+        with db.conexion() as con:
+            codigo = usuarios.regenerar_codigo(con, usuario_id)
+            cuenta = usuarios.obtener(con, usuario_id)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir("/usuarios")
+    anotar(request, "Generó un código de recuperación para otra cuenta",
+           f"{cuenta['nombre']} ({cuenta['usuario']})")
+    return pagina_codigo(request, cuenta, codigo, "admin")
+
+
+@app.get("/actividad", response_class=HTMLResponse)
+def actividad(request: Request, usuario_id: str = "", desde: str = "", hasta: str = ""):
+    filtros = {"usuario_id": usuario_id if usuario_id.isdigit() else "",
+               "desde": desde.strip(), "hasta": hasta.strip()}
+    with db.conexion() as con:
+        return pagina(request, "actividad.html", filtros=filtros, cuentas=usuarios.listar(con),
+                      filas=usuarios.actividad(con, **filtros), limite=500)
+
+
+@app.get("/reportes/ventas", response_class=HTMLResponse)
+def reporte_ventas(request: Request, usuario_id: str = "", desde: str = "", hasta: str = ""):
+    """Lo que vendió cada cuenta. Quien no es administrador ve solo lo suyo."""
+    yo = request.state.usuario
+    hoy = date.today()
+    filtros = {"desde": desde.strip() or hoy.replace(day=1).isoformat(),
+               "hasta": hasta.strip() or hoy.isoformat(),
+               "usuario_id": usuario_id if usuario_id.isdigit() else ""}
+    if yo["rol"] != "admin":
+        filtros["usuario_id"] = str(yo["id"])
+    de_quien = int(filtros["usuario_id"]) if filtros["usuario_id"] else None  # 0 = sin usuario
+    with db.conexion() as con:
+        resumen = inv.ventas_por_usuario(con, filtros["desde"], filtros["hasta"], de_quien)
+        ventas = inv.ultimas_ventas(con, 300, desde=filtros["desde"], hasta=filtros["hasta"],
+                                    usuario_id=de_quien)
+        cuentas = usuarios.listar(con)
+    return pagina(
+        request, "reporte_ventas.html", filtros=filtros, resumen=resumen, ventas=ventas, cuentas=cuentas,
+        total=sum(r["total"] for r in resumen), ganancia=sum(r["ganancia"] for r in resumen),
+        cantidad=sum(r["ventas"] for r in resumen),
+    )
 
 
 # ---------------------------------------------------------------- notificaciones
@@ -196,6 +407,7 @@ async def producto_nuevo_guardar(
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/productos/nuevo")
+    anotar(request, "Creó un producto", f"{creado['codigo']} {nombre_interno.strip()}")
     avisar(request, f"✅ Producto guardado. Su código es {creado['codigo']}.")
     return ir(f"/productos#p{creado['id']}")
 
@@ -208,7 +420,8 @@ def productos(request: Request):
 
 
 @app.get("/productos/excel")
-def productos_excel():
+def productos_excel(request: Request):
+    anotar(request, "Descargó un Excel", "Productos")
     with db.conexion() as con:
         return excel(exportar.productos(con), "productos")
 
@@ -236,6 +449,9 @@ def producto_precio(request: Request, producto_id: int, margen_pct: str = Form("
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/productos#p{producto_id}")
+    anotar(request, "Cambió un precio",
+           f"{actual['codigo']} {actual['nombre_interno']}: de {inv.guaranies(actual['precio_venta'])} "
+           f"a {inv.guaranies(precio)}")
     avisar(request, f"✅ {actual['nombre_interno']}: precio {inv.guaranies(precio)} "
                     f"(ganancia {f'{margen:g}'.replace('.', ',')}%).")
     return ir(f"/productos#p{producto_id}")
@@ -274,6 +490,7 @@ async def producto_editar_guardar(
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/productos/{producto_id}/editar")
+    anotar(request, "Editó un producto", f"{nombre_interno.strip()} (n.º {producto_id})")
     avisar(request, "✅ Cambios guardados.")
     return ir(f"/productos#p{producto_id}")
 
@@ -288,6 +505,7 @@ def producto_unir(request: Request, producto_id: int, destino_id: str = Form("")
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/productos/{producto_id}/editar#unir")
+    anotar(request, "Unió dos productos", f"{r['borrado']} pasó a «{r['nombre']}»")
     avisar(request, f"✅ Listo: la compra pasó a «{r['nombre']}». Ahora hay {inv.cantidad_txt(r['stock'])} "
                     f"en stock. Se borró el producto repetido ({r['borrado']}) y la próxima factura "
                     "con ese nombre se va a reconocer sola.")
@@ -298,6 +516,10 @@ def producto_unir(request: Request, producto_id: int, destino_id: str = Form("")
 def producto_activo(request: Request, producto_id: int):
     with db.conexion() as con:
         con.execute("UPDATE productos SET activo = 1 - activo WHERE id = ?", (producto_id,))
+        producto = inv.obtener_producto(con, producto_id)
+    if producto:
+        anotar(request, "Activó un producto" if producto["activo"] else "Desactivó un producto",
+               f"{producto['codigo']} {producto['nombre_interno']}")
     return ir(f"/productos#p{producto_id}")
 
 
@@ -321,6 +543,7 @@ def _filtros_compras(request: Request) -> dict:
 
 @app.get("/compras/excel")
 def compras_excel(request: Request):
+    anotar(request, "Descargó un Excel", "Compras")
     with db.conexion() as con:
         return excel(exportar.compras(con, _filtros_compras(request)), "compras")
 
@@ -352,6 +575,15 @@ def compras_panel(request: Request):
     )
 
 
+def _detalle_lote(lote) -> str:
+    """Una compra en una línea, para el registro de actividad."""
+    if not lote:
+        return "compra que ya no existe"
+    return (f"{lote['codigo']} {lote['nombre_interno']}, factura {lote['nro_factura'] or 's/n'} de "
+            f"{lote['proveedor'] or 'sin proveedor'}, {inv.cantidad_txt(lote['cantidad'])} por "
+            f"{inv.guaranies(lote['costo_total'])}")
+
+
 @app.get("/compras/{lote_id}/editar", response_class=HTMLResponse)
 def compra_editar(request: Request, lote_id: int):
     with db.conexion() as con:
@@ -369,12 +601,15 @@ def compra_editar_guardar(
 ):
     try:
         with db.conexion() as con:
+            antes = inv.obtener_lote(con, lote_id)
             inv.editar_lote(con, lote_id, {"fecha": fecha, "nro_factura": nro_factura,
                                            "proveedor": proveedor, "cantidad": cantidad,
                                            "costo_total": costo_total})
+            ahora = inv.obtener_lote(con, lote_id)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/compras/{lote_id}/editar")
+    anotar(request, "Corrigió una compra", _detalle_lote(antes) + " → " + _detalle_lote(ahora))
     avisar(request, "✅ Compra corregida.")
     return ir("/compras")
 
@@ -383,10 +618,12 @@ def compra_editar_guardar(
 def compra_borrar(request: Request, lote_id: int):
     try:
         with db.conexion() as con:
+            antes = inv.obtener_lote(con, lote_id)
             inv.borrar_lote(con, lote_id)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/compras/{lote_id}/editar")
+    anotar(request, "Borró una compra", _detalle_lote(antes))
     avisar(request, "🗑️ Compra borrada.")
     return ir("/compras")
 
@@ -422,20 +659,24 @@ async def vender_guardar(request: Request):
         items = [{"producto_id": int(i), "cantidad": c} for i, c in zip(ids, cantidades)]
         with db.conexion() as con:
             r = inv.registrar_venta(con, items, int(cliente) if str(cliente).isdigit() else None,
-                                    formulario.get("medio_pago", ""), formulario.get("fecha", ""))
+                                    formulario.get("medio_pago", ""), formulario.get("fecha", ""),
+                                    usuario_id=request.state.usuario["id"])
     except ValueError:
         avisar(request, "Hay un producto mal elegido. Probá de nuevo.", "error")
         return ir("/vender")
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/vender")
+    anotar(request, "Registró una venta",
+           f"Venta n.º {r['venta_id']}: {r['productos']} producto(s) por {inv.guaranies(r['total'])}")
     avisar(request, f"✅ Venta guardada: {r['productos']} producto(s) por {inv.guaranies(r['total'])}. "
                     f"Ganancia {inv.guaranies(r['ganancia'])}.")
     return ir("/vender")
 
 
 @app.get("/ventas/excel")
-def ventas_excel():
+def ventas_excel(request: Request):
+    anotar(request, "Descargó un Excel", "Ventas")
     with db.conexion() as con:
         return excel(exportar.ventas(con), "ventas")
 
@@ -449,6 +690,7 @@ async def api_cliente_nuevo(request: Request):
                                   datos.get("documento", ""))
     except inv.ErrorNegocio as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+    anotar(request, "Creó un cliente", c["nombre"])
     return JSONResponse(_cliente_opcion(c))
 
 
@@ -476,6 +718,7 @@ def etiquetas_tamano(request: Request, tamano: str = Form(""), producto_id: str 
         with db.conexion() as con:
             inv.guardar_ajuste(con, "etiqueta_tamano", tamano)
         ancho, alto = TAMANOS[tamano]
+        anotar(request, "Cambió el tamaño de etiqueta", f"{ancho} × {alto} mm")
         avisar(request, f"✅ Tamaño de etiqueta: {ancho} × {alto} mm.")
     return ir(f"/etiquetas?producto_id={producto_id}" if producto_id.isdigit() else "/etiquetas")
 
@@ -507,6 +750,8 @@ def _documento(lista: list, titulo: str, nombre: str, formato: str, con_precio: 
 def _mandar_a_impresora(request: Request, lista: list, con) -> None:
     n = impresora.imprimir(lista, tamano_etiqueta(con))
     ancho, alto = TAMANOS[tamano_etiqueta(con)]
+    usuarios.registrar(con, request.state.usuario, "Imprimió etiquetas", f"{n} etiqueta(s) de {ancho} × {alto} mm")
+    request.state.anotado = True
     avisar(request, f"🖨️ Se mandaron {n} etiqueta(s) de {ancho} × {alto} mm a la impresora.")
 
 
@@ -515,6 +760,8 @@ def etiquetas_factura(request: Request, compra_id: int, formato: str = "rollo"):
     try:
         with db.conexion() as con:
             lista, nombre = etiquetas_pdf.etiquetas_de_factura(con, compra_id)
+            usuarios.registrar(con, request.state.usuario, "Descargó etiquetas en PDF",
+                               f"{len(lista)} de la factura {nombre}")
             return _documento(lista, f"Etiquetas factura {nombre}", nombre, formato, True, con)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
@@ -547,8 +794,14 @@ def etiquetas_producto(request: Request, producto_id: str = Form(""), cantidad: 
             if accion == "imprimir":
                 impresora.enviar(impresora.tspl_etiquetas([(producto, n)], tamano_etiqueta(con), con_precio))
                 ancho, alto = TAMANOS[tamano_etiqueta(con)]
+                usuarios.registrar(con, request.state.usuario, "Imprimió etiquetas",
+                                   f"{n} de {producto['codigo']} {producto['nombre_interno']}")
+                request.state.anotado = True
                 avisar(request, f"🖨️ Se mandaron {n} etiqueta(s) de {ancho} × {alto} mm a la impresora.")
                 return ir(f"/etiquetas?producto_id={producto_id}")
+            usuarios.registrar(con, request.state.usuario, "Descargó etiquetas en PDF",
+                               f"{n} de {producto['codigo']} {producto['nombre_interno']}")
+            request.state.anotado = True
             titulo = f"Etiquetas {producto['nombre_interno']}"
             return _documento([producto] * n, titulo, producto["codigo"], "a4" if accion == "a4" else "rollo",
                               con_precio, con)

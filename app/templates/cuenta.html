@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Mi cuenta{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>👤 Mi cuenta</h1>
+  <div class="botones"><a class="boton peligro" href="/salir">🚪 Cerrar sesión</a></div>
+</div>
+<p class="resumen"><b>{{ usuario.nombre }}</b> · usuario <span class="mono">{{ usuario.usuario }}</span> · {{ roles[usuario.rol] }}</p>
+
+<div class="accesos">
+  <a class="acceso verde" href="/reportes/ventas"><span class="icono">📈</span>{{ 'Ventas por usuario' if usuario.rol == 'admin' else 'Mis ventas' }}</a>
+  {% if usuario.rol == 'admin' %}
+    <a class="acceso azul" href="/usuarios"><span class="icono">👥</span>Usuarios{% if por_aprobar %} ({{ por_aprobar }} por aprobar){% endif %}</a>
+    <a class="acceso violeta" href="/actividad"><span class="icono">📋</span>Registro de actividad</a>
+  {% endif %}
+</div>
+
+<h2>Cambiar mi contraseña</h2>
+<form method="post" action="/cuenta/clave" class="formulario">
+  <label>Contraseña actual
+    <input type="password" name="actual" autocomplete="current-password" required>
+  </label>
+  <div class="dos-columnas">
+    <label>Contraseña nueva (8 como mínimo)
+      <input type="password" name="clave" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>Repetí la contraseña nueva
+      <input type="password" name="repetir" autocomplete="new-password" minlength="8" required>
+    </label>
+  </div>
+  <div class="botones"><button class="boton principal" type="submit">💾 Cambiar contraseña</button></div>
+</form>
+
+<h2>Código de recuperación</h2>
+<p class="ayuda">Es el código que permite cambiar la contraseña si la olvidás. Si lo perdiste, generá uno nuevo: el anterior deja de servir.</p>
+<form method="post" action="/cuenta/codigo" class="formulario">
+  <label>Contraseña actual
+    <input type="password" name="actual" autocomplete="current-password" required>
+  </label>
+  <div class="botones"><button class="boton" type="submit">🔑 Generar un código nuevo</button></div>
+</form>
+{% endblock %}
