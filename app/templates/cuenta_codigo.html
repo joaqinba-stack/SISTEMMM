@@ -1,0 +1,39 @@
+{% extends "base_acceso.html" %}
+{% block titulo %}Código de recuperación{% endblock %}
+{% block contenido %}
+{% if motivo == 'nueva' %}
+  <h2>✅ Cuenta creada</h2>
+  {% if cuenta.estado == 'activo' %}
+    <p>Listo, <b>{{ cuenta.nombre }}</b>: sos el administrador y ya estás adentro.</p>
+  {% else %}
+    <div class="tarjeta alerta">Tu cuenta <b>{{ cuenta.usuario }}</b> espera la aprobación de un administrador. Cuando la apruebe vas a poder entrar.</div>
+  {% endif %}
+{% elif motivo == 'recuperada' %}
+  <h2>✅ Contraseña cambiada</h2>
+  <p>Ya podés entrar con la contraseña nueva. El código que usaste dejó de servir.</p>
+{% elif motivo == 'admin' %}
+  <h2>🔑 Código para {{ cuenta.nombre }}</h2>
+  <p>Pasale este código a <b>{{ cuenta.nombre }}</b> (usuario <span class="mono">{{ cuenta.usuario }}</span>). Lo usa en <i>Olvidé mi contraseña</i> para elegir una contraseña nueva. El código anterior dejó de servir.</p>
+{% else %}
+  <h2>🔑 Código de recuperación nuevo</h2>
+  <p>El código anterior dejó de servir.</p>
+{% endif %}
+
+<p><b>{{ 'Su' if motivo == 'admin' else 'Tu' }} código de recuperación:</b></p>
+<div class="codigo-recuperacion" id="codigo">{{ codigo }}</div>
+<div class="tarjeta alerta">
+  <b>Guardalo ahora: no se vuelve a mostrar.</b> Anotalo en un papel o sacale una foto. Es lo único que permite cambiar la contraseña si se olvida, sin depender del correo.
+</div>
+
+<div class="botones">
+  {% if motivo == 'admin' %}
+    <a class="boton grande principal" href="/usuarios">Ya se lo pasé</a>
+  {% elif motivo == 'propio' %}
+    <a class="boton grande principal" href="/cuenta">Ya lo guardé</a>
+  {% elif motivo == 'nueva' and cuenta.estado == 'activo' %}
+    <a class="boton grande principal" href="/">Ya lo guardé, entrar</a>
+  {% else %}
+    <a class="boton grande principal" href="/login">Ya lo guardé</a>
+  {% endif %}
+</div>
+{% endblock %}

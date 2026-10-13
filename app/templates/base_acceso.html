@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Entrar al inventario{% endblock %}</title>
+  <link rel="stylesheet" href="/static/estilo.css?v=12">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+</head>
+<body>
+  <main class="contenido angosto">
+    <h1>📦 Inventario</h1>
+    {% for tipo, texto in avisos %}
+      <div class="aviso aviso-{{ tipo }}" role="alert">{{ texto }}</div>
+    {% endfor %}
+    {% block contenido %}{% endblock %}
+  </main>
+</body>
+</html>

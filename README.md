@@ -60,6 +60,28 @@ python run.py
 Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma red WiFi, usá
 `http://IP-DE-LA-COMPU:8000`.
 
+## Cuentas de usuario
+
+Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla de entrada están
+**Crear una cuenta** y **Olvidé mi contraseña**.
+
+- **La primera cuenta que se crea es la del administrador** y entra enseguida. Creala apenas
+  arranques el sistema por primera vez.
+- Las cuentas siguientes quedan **esperando aprobación**: el administrador las habilita en
+  **👤 (tu nombre) → Usuarios**. Ahí también se bloquea una cuenta o se la hace administradora.
+- **Recuperar la contraseña sin correo:** al crear la cuenta el sistema muestra una sola vez un
+  **código de recuperación** (por ejemplo `ABCD-EFGH-JKLM`). Hay que guardarlo. Con el usuario y
+  ese código se elige una contraseña nueva en *Olvidé mi contraseña*, y se entrega un código nuevo.
+- Si alguien perdió también el código, el administrador le genera otro desde **Usuarios**.
+  Si es el propio administrador el que quedó afuera, se rescata desde la computadora del sistema:
+  `python scripts/restablecer_acceso.py USUARIO --admin`
+- Después de 5 contraseñas (o códigos) errados seguidos la cuenta se frena 15 minutos.
+- **Registro de actividad** (solo administradores): cada cosa que hace cada usuario queda anotada
+  con fecha y hora: entradas, productos, precios, compras, ventas, etiquetas, descargas de Excel,
+  cambios de cuentas y lo que se carga por Telegram.
+- **Ventas por usuario**: cuánto vendió cada cuenta en el período elegido (cantidad de ventas,
+  unidades, total y ganancia) con el detalle debajo. Quien no es administrador ve solo sus ventas.
+
 ## Configurar el bot de Telegram
 
 1. En Telegram buscá **@BotFather**, escribile `/newbot` y seguí los pasos. Te da un **token**.
@@ -68,6 +90,7 @@ Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma r
    `ANTHROPIC_API_KEY=`. Es la que usa Claude para leer las fotos de las facturas.
 3. Arrancá el sistema (`python run.py`), abrí tu bot en Telegram y escribile `/miid`.
    Te responde tu número de usuario. Ponelo en `TELEGRAM_USUARIOS_PERMITIDOS=`. Si son varias personas, separá los números con comas.
+   Si lo dejás vacío, el bot es de uso libre y este paso no hace falta.
 4. Volvé a arrancar el sistema.
 
 ### Cómo se usa el bot
@@ -76,6 +99,10 @@ Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma r
 2. El bot responde con lo que leyó: proveedor, número de factura, fecha y cada producto.
    - ✔️ = producto que ya existe (le suma stock)
    - 🆕 = producto nuevo. Se crea solo con sus códigos y precio +40%, y queda marcado para revisar en la página
+   - 🔁 = si un producto nuevo se parece a uno que ya existe, aparece un botón para elegirlo con un toque
+   - Debajo de cada ✔️ se ve cómo figura en la factura, para notar si se eligió el producto equivocado
+   - ⚠️ = los renglones no suman el total de la factura, o el número leído no coincide con el CDC
+   - 🔐 = en facturas electrónicas, el número y la fecha se toman del CDC (los 44 dígitos)
 3. Si un producto está mal, tocá **✏️ Corregir** con su número, escribí parte del nombre correcto y
    elegilo de la lista (o «Es un producto nuevo»). El sistema aprende ese nombre para la próxima vez.
 4. Si está todo bien, tocá **✅ Sí, guardar**. Si no, tocá **❌ No, cancelar**.
@@ -117,10 +144,9 @@ se usa CUPS (`lp`). Si la impresora está en la red, poné su IP en `IMPRESORA_I
 | Variable | Para qué sirve |
 |---|---|
 | `TELEGRAM_TOKEN` | Token del bot (de @BotFather). Si está vacío, el bot no arranca |
-| `TELEGRAM_USUARIOS_PERMITIDOS` | Números de usuario que pueden usar el bot |
+| `TELEGRAM_USUARIOS_PERMITIDOS` | Números de usuario que pueden usar el bot. Si está vacío, el bot es de uso libre |
 | `ANTHROPIC_API_KEY` | Clave para leer facturas con Claude |
 | `CLAUDE_MODEL` | Modelo de Claude (por defecto `claude-opus-5-5`) |
-| `CLAVE_ACCESO` | Clave para entrar a la página. Si está vacía, no la pide |
 | `URL_PUBLICA` | Dirección de la página, para que el bot mande el link |
 | `MARGEN_POR_DEFECTO` | % de ganancia sugerido (40) |
 | `STOCK_BAJO` | Desde qué cantidad se avisa "queda poco stock" (2) |
@@ -138,6 +164,7 @@ Los datos (base de datos, fotos de productos y facturas) se guardan en la carpet
 - `app/inventario.py` tiene las reglas: productos, compras (lotes), ventas FIFO y precios.
 - `app/codigos.py` genera el código del producto (que también es su código de barra).
 - `app/telegram_bot.py` y `app/factura_ia.py` son el bot y la lectura de facturas con Claude.
+- `app/usuarios.py` maneja las cuentas, la recuperación de contraseña y el registro de actividad.
 - `app/db.py` define el esquema SQLite. El stock es la suma de `lotes.cantidad_restante`.
 
 Para correr las pruebas:

@@ -1,0 +1,25 @@
+{% extends "base_acceso.html" %}
+{% block titulo %}Olvidé mi contraseña{% endblock %}
+{% block contenido %}
+<h2>🔑 Olvidé mi contraseña</h2>
+<p class="ayuda">Escribí el <b>código de recuperación</b> que te dio el sistema cuando creaste la cuenta y elegí una contraseña nueva.</p>
+<form method="post" action="/cuenta/recuperar" class="formulario">
+  <label>Usuario
+    <input name="usuario" value="{{ usuario_escrito or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+  </label>
+  <label>Código de recuperación (por ejemplo: <span class="mono">ABCD-EFGH-JKLM</span>)
+    <input name="codigo" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+  </label>
+  <label>Contraseña nueva (8 letras o números como mínimo)
+    <input type="password" name="clave" autocomplete="new-password" minlength="8" required>
+  </label>
+  <label>Repetí la contraseña nueva
+    <input type="password" name="repetir" autocomplete="new-password" minlength="8" required>
+  </label>
+  <div class="botones"><button class="boton grande principal" type="submit">Cambiar contraseña</button></div>
+</form>
+<div class="tarjeta">
+  <b>¿No tenés el código?</b> Pedile a un administrador que te genere uno nuevo desde la pantalla <i>Usuarios</i> y usalo acá.
+</div>
+<div class="enlaces-acceso"><a class="boton" href="/login">← Volver a entrar</a></div>
+{% endblock %}

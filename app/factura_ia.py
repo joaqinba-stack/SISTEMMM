@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import logging
+import re
 
 import anthropic
 from PIL import Image, ImageOps
@@ -23,6 +24,8 @@ ESQUEMA = {
         "proveedor": {"type": "string"},
         "nro_factura": {"type": "string"},
         "fecha": {"type": "string"},
+        "total_factura": {"type": "number"},
+        "cdc": {"type": "string"},
         "items": {
             "type": "array",
             "items": {
@@ -39,7 +42,7 @@ ESQUEMA = {
             },
         },
     },
-    "required": ["es_factura", "proveedor", "nro_factura", "fecha", "items"],
+    "required": ["es_factura", "proveedor", "nro_factura", "fecha", "total_factura", "cdc", "items"],
     "additionalProperties": False,
 }
 
@@ -49,6 +52,10 @@ Extraé los datos para cargarlos en un sistema de inventario.
 - proveedor: nombre comercial o razón social del vendedor (quien emite la factura), no del cliente.
 - nro_factura: número completo tal cual figura, normalmente con el formato 001-001-0000000.
 - fecha: fecha de emisión en formato AAAA-MM-DD. Si no se lee, dejala vacía.
+- total_factura: el total general de la factura (el importe final a pagar), copiado tal cual figura,
+  sin calcularlo. Si no se lee, 0.
+- cdc: si es una factura electrónica, los 44 dígitos del CDC (código de control), sin espacios.
+  Si no tiene CDC, dejalo vacío.
 - items: un elemento por cada renglón de producto comprado.
   - descripcion: el texto del producto tal como aparece en la factura.
   - cantidad: unidades compradas.
@@ -63,7 +70,34 @@ Extraé los datos para cargarlos en un sistema de inventario.
   Si el renglón es el mismo producto que uno de la lista, poné su código (por ejemplo P-00028),
   aunque en la factura esté escrito distinto (abreviado, en mayúsculas, con otro orden o con el
   código del proveedor) y aunque venga de otro proveedor: el mismo producto se compra en varios
-  lugares. Si es un producto distinto (otro tamaño, otro modelo, otra medida), dejalo vacío."""
+  lugares. Si es un producto distinto (otro tamaño, otro modelo, otra medida), dejalo vacío.
+  Entre paréntesis, después de «también:», están otros nombres con los que ese producto ya figuró
+  en facturas anteriores."""
+
+
+def _dv_modulo11(numero: str) -> int:
+    """Dígito verificador de la DNIT (módulo 11); es el mismo para el RUC y para el CDC."""
+    total, k = 0, 2
+    for digito in reversed(numero):
+        total += int(digito) * k
+        k = 2 if k == 11 else k + 1
+    resto = total % 11
+    return 11 - resto if resto > 1 else 0
+
+
+def leer_cdc(texto: str) -> dict | None:
+    """Datos que trae adentro el CDC de una factura electrónica (44 dígitos).
+    Devuelve None si no es un CDC válido, por ejemplo si se leyó mal algún dígito."""
+    cdc = re.sub(r"\D", "", texto or "")
+    if len(cdc) != 44 or _dv_modulo11(cdc[:43]) != int(cdc[43]):
+        return None
+    fecha = cdc[25:33]
+    return {
+        "cdc": cdc,
+        "ruc_emisor": f"{int(cdc[2:10])}-{cdc[10]}",
+        "nro_factura": f"{cdc[11:14]}-{cdc[14:17]}-{cdc[17:24]}",
+        "fecha": f"{fecha[:4]}-{fecha[4:6]}-{fecha[6:]}",
+    }
 
 
 def _preparar_imagen(contenido: bytes, media_type: str) -> tuple[bytes, str]:
@@ -96,8 +130,8 @@ def _texto_catalogo(catalogo: list[tuple[str, str]] | None) -> str:
 
 async def extraer(contenido: bytes, media_type: str = "image/jpeg",
                   catalogo: list[tuple[str, str]] | None = None) -> dict:
-    """Devuelve {es_factura, proveedor, nro_factura, fecha, items:[{descripcion, cantidad,
-    precio_unitario, total, codigo_existente}]}. catalogo: [(código, nombre)] de los productos."""
+    """Devuelve {es_factura, proveedor, nro_factura, fecha, total_factura, cdc, items:[{descripcion,
+    cantidad, precio_unitario, total, codigo_existente}]}. catalogo: [(código, nombre)] de los productos."""
     if not config.ANTHROPIC_API_KEY:
         raise ErrorLectura("Falta configurar ANTHROPIC_API_KEY para poder leer facturas.")
     contenido, media_type = _preparar_imagen(contenido, media_type)
@@ -159,5 +193,7 @@ def limpiar(datos: dict) -> dict:
         "proveedor": (datos.get("proveedor") or "").strip(),
         "nro_factura": (datos.get("nro_factura") or "").strip(),
         "fecha": (datos.get("fecha") or "").strip(),
+        "total_factura": float(datos.get("total_factura") or 0),
+        "cdc": re.sub(r"\D", "", datos.get("cdc") or ""),
         "items": items,
     }

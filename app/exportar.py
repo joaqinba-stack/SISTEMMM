@@ -58,9 +58,9 @@ def compras(con, filtros: dict | None = None) -> bytes:
 
 def ventas(con) -> bytes:
     encabezados = ["Fecha", "Cliente", "Código", "Producto", "Cantidad", "Precio unit.",
-                   "Total", "Costo (FIFO)", "Ganancia", "Medio de pago"]
+                   "Total", "Costo (FIFO)", "Ganancia", "Medio de pago", "Vendió"]
     filas = [[inv.fecha_txt(v["fecha"]), v["cliente"], v["codigo"], v["nombre_interno"],
               v["cantidad"], round(v["precio_unit"]), round(v["total"]), round(v["costo_fifo"]),
-              round(v["ganancia"]), v["medio_pago"]]
+              round(v["ganancia"]), v["medio_pago"], v["vendedor"]]
              for v in inv.listar_ventas(con)]
     return _libro("Ventas", encabezados, filas, columnas_dinero=(6, 7, 8, 9))

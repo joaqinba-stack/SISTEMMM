@@ -2,6 +2,7 @@
 import difflib
 import html
 import logging
+import re
 import secrets
 import time
 import uuid
@@ -11,7 +12,7 @@ from telegram.ext import (
     Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters,
 )
 
-from app import config, db, etiquetas_pdf, factura_ia, impresora, inventario as inv
+from app import config, db, etiquetas_pdf, factura_ia, impresora, inventario as inv, usuarios
 
 log = logging.getLogger(__name__)
 
@@ -30,8 +31,31 @@ AYUDA = (
 
 # ---------------------------------------------------------------- lógica (sin Telegram)
 
+TOLERANCIA_TOTAL = 100  # guaraníes de diferencia que se aceptan por redondeos
+MAX_BOTONES = 100       # tope de Telegram para un teclado
+
+
+def verificar(datos: dict) -> tuple[dict, list[str]]:
+    """Controles que no dependen de la IA: el CDC y la suma de los renglones.
+    Devuelve los datos (con número y fecha del CDC si es válido) y los avisos para la persona."""
+    avisos = []
+    cdc = factura_ia.leer_cdc(datos.get("cdc", ""))
+    if cdc:
+        if re.sub(r"\D", "", datos["nro_factura"]) != re.sub(r"\D", "", cdc["nro_factura"]):
+            avisos.append(f"Leí el número de factura como «{datos['nro_factura'] or 'vacío'}», "
+                          f"pero según el CDC es {cdc['nro_factura']}. Uso el del CDC.")
+        datos = {**datos, "nro_factura": cdc["nro_factura"], "fecha": cdc["fecha"]}
+    suma = sum(item["total"] for item in datos["items"])
+    total = datos.get("total_factura") or 0
+    if total and abs(suma - total) > TOLERANCIA_TOTAL:
+        avisos.append(f"Los renglones suman {inv.guaranies(suma)} pero el total de la factura es "
+                      f"{inv.guaranies(total)}. Revisá que no falte ni sobre ningún producto.")
+    return {**datos, "cdc_ok": bool(cdc)}, avisos
+
+
 def preparar_compra(datos: dict, foto: str | None) -> dict:
     """Busca cada renglón de la factura entre los productos que ya existen."""
+    datos, avisos = verificar(datos)
     with db.conexion() as con:
         clave = inv.normalizar(datos["proveedor"])
         fila = con.execute("SELECT id FROM proveedores WHERE clave = ?", (clave,)).fetchone()
@@ -45,13 +69,18 @@ def preparar_compra(datos: dict, foto: str | None) -> dict:
             aprender = bool(producto) and inv.normalizar(item["descripcion"]) not in (
                 inv.normalizar(producto["nombre_interno"]), inv.normalizar(producto["nombre_proveedor"]))
             producto = producto or inv.buscar_coincidencia(con, item["descripcion"])
+            # 3) si queda como nuevo, los que se le parecen se ofrecen para elegir con un toque
+            sugerencias = [] if producto else [
+                {"id": p["id"], "codigo": p["codigo"], "nombre": p["nombre_interno"]}
+                for p in inv.parecidos(con, item["descripcion"])]
             items.append({
                 **item,
                 "producto_id": producto["id"] if producto else None,
                 "producto_nombre": producto["nombre_interno"] if producto else item["descripcion"],
                 "aprender": aprender,
+                "sugerencias": sugerencias,
             })
-    return {**datos, "items": items, "foto": foto, "repetida": repetida}
+    return {**datos, "items": items, "foto": foto, "repetida": repetida, "avisos": avisos}
 
 
 def texto_resumen(compra: dict) -> str:
@@ -60,8 +89,11 @@ def texto_resumen(compra: dict) -> str:
     lineas.append(f"🏪 Proveedor: <b>{e(compra['proveedor'] or 'no se lee')}</b>")
     lineas.append(f"🔢 Factura N°: <b>{e(compra['nro_factura'] or 'no se lee')}</b>")
     lineas.append(f"📅 Fecha: <b>{inv.fecha_txt(inv.leer_fecha(compra['fecha']))}</b>")
+    if compra.get("cdc_ok"):
+        lineas.append("🔐 Número y fecha confirmados con el CDC")
     lineas.append("")
     total = 0.0
+    hay_sugerencias = False
     for n, item in enumerate(compra["items"], 1):
         marca = "✔️" if item["producto_id"] else "🆕"
         lineas.append(
@@ -69,11 +101,24 @@ def texto_resumen(compra: dict) -> str:
             f"     {inv.cantidad_txt(item['cantidad'])} × {inv.guaranies(item['precio_unitario'])}"
             f" = {inv.guaranies(item['total'])}"
         )
+        if item["producto_id"]:
+            # Con el texto de la factura al lado se nota si se eligió el producto equivocado.
+            if inv.normalizar(item["descripcion"]) != inv.normalizar(item["producto_nombre"]):
+                lineas.append(f"     📄 En la factura: «{e(item['descripcion'])}»")
+        elif item.get("sugerencias"):
+            hay_sugerencias = True
+            nombres = " · ".join(e(s["nombre"]) for s in item["sugerencias"])
+            lineas.append(f"     🔎 Se parece a: <i>{nombres}</i>")
         total += item["total"]
     lineas.append("")
     lineas.append(f"💰 <b>Total: {inv.guaranies(total)}</b>")
+    for aviso in compra.get("avisos", []):
+        lineas.append("")
+        lineas.append(f"⚠️ <b>{e(aviso)}</b>")
     lineas.append("")
     lineas.append("✔️ = producto que ya existe   🆕 = producto nuevo")
+    if hay_sugerencias:
+        lineas.append("🔁 = tocá ese botón si el producto nuevo en realidad es ese")
     if compra["repetida"]:
         lineas.append("")
         lineas.append("⚠️ <b>Atención: esta factura ya fue cargada antes.</b>")
@@ -153,6 +198,14 @@ def teclado_resumen(clave: str, compra: dict) -> InlineKeyboardMarkup:
               InlineKeyboardButton("❌ No, cancelar", callback_data=f"c:{clave}")]]
     correcciones = [InlineKeyboardButton(f"✏️ Corregir {n}", callback_data=f"k:{clave}:{n - 1}")
                     for n in range(1, len(compra["items"]) + 1)]
+    libres = MAX_BOTONES - 2 - len(correcciones)
+    for n, item in enumerate(compra["items"]):
+        if item["producto_id"] is not None:
+            continue
+        for s in item.get("sugerencias", [])[:max(libres, 0)]:
+            filas.append([InlineKeyboardButton(f"🔁 {n + 1} es: {s['nombre'][:30]} ({s['codigo']})",
+                                               callback_data=f"p:{clave}:{n}:{s['id']}")])
+            libres -= 1
     filas += [correcciones[i:i + 3] for i in range(0, len(correcciones), 3)]
     return InlineKeyboardMarkup(filas)
 
@@ -183,8 +236,19 @@ def _limpiar_vencidos() -> None:
 # ---------------------------------------------------------------- manejadores de Telegram
 
 def _permitido(update: Update) -> bool:
+    # Sin lista de permitidos, el bot es de uso libre.
+    if not config.TELEGRAM_USUARIOS_PERMITIDOS:
+        return True
     usuario = update.effective_user
     return bool(usuario and str(usuario.id) in config.TELEGRAM_USUARIOS_PERMITIDOS)
+
+
+def _anotar(update: Update, accion: str, detalle: str = "") -> None:
+    """Deja en el registro de actividad lo que se hizo desde Telegram, con el nombre de quien fue."""
+    persona = update.effective_user
+    nombre = getattr(persona, "full_name", "") or str(getattr(persona, "id", ""))
+    with db.conexion() as con:
+        usuarios.registrar(con, None, accion, detalle, nombre=f"Telegram: {nombre}")
 
 
 async def _rechazar(update: Update) -> None:
@@ -236,7 +300,7 @@ async def recibir_factura(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     (carpeta / nombre_foto).write_bytes(contenido)
 
     with db.conexion() as con:
-        catalogo = [(p["codigo"], p["nombre_interno"]) for p in inv.listar_productos(con)]
+        catalogo = inv.catalogo_para_ia(con)
     try:
         datos = await factura_ia.extraer(contenido, media_type, catalogo)
     except factura_ia.ErrorLectura as exc:
@@ -269,6 +333,7 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 lista, _ = etiquetas_pdf.etiquetas_de_factura(con, int(partes[1]))
                 tamano = etiquetas_pdf.tamano_elegido(con)
             n = impresora.imprimir(lista, tamano)
+            _anotar(update, "Imprimió etiquetas", f"{n} etiqueta(s) de una factura")
             await consulta.message.reply_text(f"🖨️ Listo, mandé {n} etiqueta(s) a la impresora.")
         except (inv.ErrorNegocio, impresora.ErrorImpresora) as exc:
             await consulta.message.reply_text(f"😕 No pude imprimir: {exc}")
@@ -312,6 +377,8 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     teclado = None
     try:
         texto, compra_id = guardar_compra(compra)
+        _anotar(update, "Cargó una compra", f"Factura {compra['nro_factura'] or 's/n'} de "
+                f"{compra['proveedor'] or 'sin proveedor'}: {len(compra['items'])} renglón(es)")
         if impresora.configurada():
             teclado = InlineKeyboardMarkup([[InlineKeyboardButton(
                 "🏷️ Imprimir etiquetas de esta factura", callback_data=f"e:{compra_id}")]])

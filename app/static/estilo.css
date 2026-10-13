@@ -56,6 +56,17 @@ h2 { font-size: 1.25rem; margin: 1.2rem 0 0.6rem; }
 .contenido.angosto { max-width: 520px; padding-top: 10vh; }
 .pie { text-align: center; padding: 20px; }
 
+/* ---- Entrada, cuentas y usuarios ---- */
+.enlaces-acceso { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.enlaces-acceso .boton { flex: 1 1 200px; }
+.codigo-recuperacion {
+  font-family: ui-monospace, Consolas, monospace; font-size: 1.7rem; font-weight: 700; letter-spacing: .06em;
+  text-align: center; padding: 18px 10px; background: #fff; border: 3px dashed var(--verde);
+  border-radius: var(--radio); user-select: all; overflow-wrap: anywhere;
+}
+.acciones-fila { display: flex; flex-wrap: wrap; gap: 8px; }
+.acciones-fila form { margin: 0; }
+
 /* ---- Avisos ---- */
 .aviso { padding: 14px 18px; border-radius: var(--radio); margin-bottom: 14px; font-weight: 600; font-size: 1.05rem; }
 .aviso-ok { background: var(--verde-claro); border: 2px solid var(--verde); }

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block titulo %}Ventas por usuario{% endblock %}
+{% block contenido %}
+<div class="titulo-con-botones">
+  <h1>📈 {{ 'Ventas por usuario' if usuario.rol == 'admin' else 'Mis ventas' }}</h1>
+  <div class="botones"><a class="boton" href="/cuenta">← Mi cuenta</a></div>
+</div>
+
+<form method="get" action="/reportes/ventas" class="formulario filtros-panel">
+  {% if usuario.rol == 'admin' %}
+  <label>Usuario
+    <select name="usuario_id">
+      <option value="">Todos</option>
+      {% for c in cuentas %}<option value="{{ c.id }}" {{ 'selected' if filtros.usuario_id == c.id|string }}>{{ c.nombre }}</option>{% endfor %}
+      <option value="0" {{ 'selected' if filtros.usuario_id == '0' }}>Sin usuario (ventas anteriores)</option>
+    </select>
+  </label>
+  {% endif %}
+  <label>Desde
+    <input type="date" name="desde" value="{{ filtros.desde }}">
+  </label>
+  <label>Hasta
+    <input type="date" name="hasta" value="{{ filtros.hasta }}">
+  </label>
+  <div class="botones">
+    <button class="boton principal" type="submit">🔎 Ver</button>
+    <a class="boton" href="/reportes/ventas">Este mes</a>
+  </div>
+</form>
+
+<div class="indicadores">
+  <div class="indicador"><span>Ventas</span><b>{{ cantidad }}</b></div>
+  <div class="indicador"><span>Total vendido</span><b>{{ total|gs }}</b></div>
+  <div class="indicador"><span>Ganancia</span><b>{{ ganancia|gs }}</b></div>
+</div>
+
+<h2>Del {{ filtros.desde|fecha }} al {{ filtros.hasta|fecha }}</h2>
+<div class="tabla-envoltura">
+<table class="tabla" id="tabla-vendedores">
+  <thead><tr><th>Usuario</th><th class="num">Ventas</th><th class="num">Unidades</th><th class="num">Total vendido</th><th class="num">Ganancia</th><th class="num">% del total</th></tr></thead>
+  <tbody>
+  {% for r in resumen %}
+    <tr>
+      <td data-titulo="Usuario"><b>{{ r.vendedor or 'Sin usuario' }}</b></td>
+      <td data-titulo="Ventas" class="num">{{ r.ventas }}</td>
+      <td data-titulo="Unidades" class="num">{{ r.unidades|cant }}</td>
+      <td data-titulo="Total vendido" class="num"><b>{{ r.total|gs }}</b></td>
+      <td data-titulo="Ganancia" class="num">{{ r.ganancia|gs }}</td>
+      <td data-titulo="% del total" class="num">{{ '%.0f'|format(r.total / total * 100 if total else 0) }}%</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">No hay ventas en ese período.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Detalle de ventas</h2>
+<div class="tabla-envoltura">
+<table class="tabla">
+  <thead><tr><th>Fecha</th><th>Vendió</th><th>Cliente</th><th>Productos</th><th class="num">Total</th><th class="num">Ganancia</th><th>Pago</th></tr></thead>
+  <tbody>
+  {% for v in ventas %}
+    <tr>
+      <td data-titulo="Fecha">{{ v.fecha|fecha }}</td>
+      <td data-titulo="Vendió">{{ v.vendedor or '—' }}</td>
+      <td data-titulo="Cliente">{{ v.cliente or '—' }}</td>
+      <td data-titulo="Productos">{% for i in v['items'] %}<div>{{ i.cantidad|cant }} × {{ i.nombre_interno }}</div>{% endfor %}</td>
+      <td data-titulo="Total" class="num"><b>{{ v.total|gs }}</b></td>
+      <td data-titulo="Ganancia" class="num">{{ v.ganancia|gs }}</td>
+      <td data-titulo="Pago">{{ v.medio_pago }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7">No hay ventas en ese período.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

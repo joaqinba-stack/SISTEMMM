@@ -18,7 +18,6 @@ TELEGRAM_USUARIOS_PERMITIDOS = {
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-5-5").strip()
 
-CLAVE_ACCESO = os.getenv("CLAVE_ACCESO", "").strip()
 URL_PUBLICA = os.getenv("URL_PUBLICA", "").strip().rstrip("/")
 
 MARGEN_POR_DEFECTO = float(os.getenv("MARGEN_POR_DEFECTO", "40"))
