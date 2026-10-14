@@ -4,6 +4,11 @@
 	default_sni {$DOMINIO}
 }
 
+(inventario) {
+	encode gzip
+	reverse_proxy app:8000
+}
+
 {$DOMINIO} {
 	tls {
 		issuer acme {
@@ -11,6 +16,11 @@
 			profile {$CERTIFICADO:classic}
 		}
 	}
-	encode gzip
-	reverse_proxy app:8000
+	import inventario
+}
+
+# Segundo nombre opcional para entrar a la misma página (DOMINIO_EXTRA). Sirve cuando DOMINIO es
+# la IP: WhatsApp y otras aplicaciones solo convierten en enlace las direcciones con nombre.
+{$DOMINIO_EXTRA:http://sin-nombre-extra.invalid} {
+	import inventario
 }
