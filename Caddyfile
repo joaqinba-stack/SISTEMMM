@@ -19,8 +19,9 @@
 	import inventario
 }
 
-# Segundo nombre opcional para entrar a la misma página (DOMINIO_EXTRA). Sirve cuando DOMINIO es
-# la IP: WhatsApp y otras aplicaciones solo convierten en enlace las direcciones con nombre.
+# Segundo nombre opcional (DOMINIO_EXTRA) que lleva a la dirección principal. Sirve cuando
+# DOMINIO es la IP: WhatsApp y otras aplicaciones solo convierten en enlace las direcciones
+# con nombre. Con «http://» adelante no pide certificado para ese nombre.
 {$DOMINIO_EXTRA:http://sin-nombre-extra.invalid} {
-	import inventario
+	redir https://{$DOMINIO}{uri}
 }
