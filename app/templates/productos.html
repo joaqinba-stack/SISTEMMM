@@ -38,6 +38,10 @@
       <td data-titulo="Nombre interno"><div><b>{{ p.nombre_interno }}</b>{% if p.revisar %} <span class="etiqueta">🆕 revisar</span>{% endif %}<div class="suave chica">{{ p.categoria }}</div></div></td>
       <td data-titulo="Nombre en la factura">{{ p.nombre_proveedor }}</td>
       <td data-titulo="Última compra en">{{ p.proveedor or '—' }}</td>
+      {% if usuario.rol != 'admin' %}
+      <td data-titulo="Ganancia %" class="num">{{ ('%g'|format(p.margen_pct))|replace('.', ',') }}%</td>
+      <td data-titulo="Precio venta" class="num"><b>{{ p.precio_venta|gs }}</b></td>
+      {% else %}
       <td data-titulo="Ganancia %" class="num">
         <form method="post" action="/productos/{{ p.id }}/precio" id="fp{{ p.id }}" class="precio-form" data-costo="{{ p.costo_ultimo }}">
           <input type="hidden" name="origen" value="">
@@ -52,6 +56,7 @@
           <button form="fp{{ p.id }}" class="boton chico" type="submit" title="Guardar el precio y el %">✓</button>
         </span>
       </td>
+      {% endif %}
       <td data-titulo="En stock" class="num stock {{ 'rojo' if p.stock <= 0 }}" data-stock-id="{{ p.id }}">{{ p.stock|cant }}</td>
       <td data-titulo="Activo">
         <form method="post" action="/productos/{{ p.id }}/activo" class="no-imprimir">

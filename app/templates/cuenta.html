@@ -7,6 +7,9 @@
 </div>
 <p class="resumen"><b>{{ usuario.nombre }}</b> · usuario <span class="mono">{{ usuario.usuario }}</span> · {{ roles[usuario.rol] }}</p>
 
+{% if usuario.cambiar_clave %}
+<div class="tarjeta alerta"><b>Elegí tu contraseña para empezar.</b> Entraste con la contraseña temporal que te dio el administrador: escribila en «Contraseña actual» y elegí una nueva que solo sepas vos.</div>
+{% else %}
 <div class="accesos">
   <a class="acceso verde" href="/reportes/ventas"><span class="icono">📈</span>{{ 'Ventas por usuario' if usuario.rol == 'admin' else 'Mis ventas' }}</a>
   {% if usuario.rol == 'admin' %}
@@ -14,6 +17,7 @@
     <a class="acceso violeta" href="/actividad"><span class="icono">📋</span>Registro de actividad</a>
   {% endif %}
 </div>
+{% endif %}
 
 <h2>Cambiar mi contraseña</h2>
 <form method="post" action="/cuenta/clave" class="formulario">
@@ -31,6 +35,7 @@
   <div class="botones"><button class="boton principal" type="submit">💾 Cambiar contraseña</button></div>
 </form>
 
+{% if not usuario.cambiar_clave %}
 <h2>Código de recuperación</h2>
 <p class="ayuda">Es el código que permite cambiar la contraseña si la olvidás. Si lo perdiste, generá uno nuevo: el anterior deja de servir.</p>
 <form method="post" action="/cuenta/codigo" class="formulario">
@@ -39,4 +44,5 @@
   </label>
   <div class="botones"><button class="boton" type="submit">🔑 Generar un código nuevo</button></div>
 </form>
+{% endif %}
 {% endblock %}

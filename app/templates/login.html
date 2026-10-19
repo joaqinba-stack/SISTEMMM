@@ -13,7 +13,7 @@
   <div class="botones"><button class="boton grande principal" type="submit">Entrar</button></div>
 </form>
 <div class="enlaces-acceso">
-  <a class="boton" href="/cuenta/nueva">✨ Crear una cuenta</a>
   <a class="boton" href="/cuenta/recuperar">🔑 Olvidé mi contraseña</a>
 </div>
+{% if not sin_cuentas %}<p class="ayuda chica">¿No tenés cuenta? Pedile al administrador que te dé de alta.</p>{% endif %}
 {% endblock %}

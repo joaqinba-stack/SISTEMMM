@@ -8,7 +8,34 @@
     <a class="boton" href="/actividad">📋 Registro de actividad</a>
   </div>
 </div>
-<p class="ayuda">Las cuentas nuevas se crean desde la pantalla de entrada y quedan <b>esperando aprobación</b> hasta que las habilites acá.</p>
+<p class="ayuda">Las cuentas las creás vos. Ponele una <b>contraseña temporal</b> y pasásela a la persona: la va a tener que cambiar la primera vez que entre, y ahí recibe su código de recuperación.</p>
+
+<details class="tarjeta" id="nuevo-usuario" open>
+  <summary>➕ Nuevo usuario</summary>
+  <form method="post" action="/usuarios/nuevo" class="formulario sin-borde">
+    <div class="dos-columnas">
+      <label>Nombre (así aparece en las ventas y en los reportes)
+        <input name="nombre" maxlength="60" required autocomplete="off">
+      </label>
+      <label>Usuario para entrar (sin espacios, por ejemplo: <span class="mono">ana</span>)
+        <input name="usuario" minlength="3" maxlength="30" pattern="[A-Za-z0-9._\-]+" required
+               autocomplete="off" autocapitalize="none" spellcheck="false">
+      </label>
+    </div>
+    <div class="dos-columnas">
+      <label>Contraseña temporal (8 como mínimo)
+        <input name="clave" minlength="8" required autocomplete="new-password">
+      </label>
+      <label>Perfil
+        <select name="rol">
+          <option value="usuario" selected>Usuario: vende, carga productos sin precios y ve sus ventas</option>
+          <option value="admin">Administrador: además precios, costos, compras y usuarios</option>
+        </select>
+      </label>
+    </div>
+    <div class="botones"><button class="boton principal" type="submit">➕ Crear usuario</button></div>
+  </form>
+</details>
 
 <div class="tabla-envoltura">
 <table class="tabla">
@@ -19,7 +46,7 @@
       <td data-titulo="Nombre"><b>{{ c.nombre }}</b>{% if c.id == usuario.id %} <span class="etiqueta">vos</span>{% endif %}</td>
       <td data-titulo="Usuario" class="mono">{{ c.usuario }}</td>
       <td data-titulo="Perfil">{{ roles[c.rol] }}</td>
-      <td data-titulo="Estado">{{ estados[c.estado] }}</td>
+      <td data-titulo="Estado">{{ estados[c.estado] }}{% if c.cambiar_clave %}<div class="suave chica">Todavía no eligió su contraseña</div>{% endif %}</td>
       <td data-titulo="Creada">{{ c.creado[:10]|fecha }}</td>
       <td data-titulo="Acciones">
         <div class="acciones-fila">

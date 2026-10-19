@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     intentos INTEGER NOT NULL DEFAULT 0,        -- contraseñas o códigos errados seguidos
     bloqueado_hasta TEXT,
     sesion INTEGER NOT NULL DEFAULT 1,  -- cambia con la contraseña: cierra las otras sesiones
+    cambiar_clave INTEGER NOT NULL DEFAULT 0,   -- 1: entra con una contraseña temporal del admin
     creado TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -184,6 +185,9 @@ def inicializar() -> None:
         # Bases creadas antes de existir las cuentas de usuario.
         if "usuario_id" not in columnas:
             con.execute("ALTER TABLE ventas ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id)")
+        # Bases creadas antes de que el administrador diera de alta las cuentas.
+        if "cambiar_clave" not in {fila[1] for fila in con.execute("PRAGMA table_info(usuarios)")}:
+            con.execute("ALTER TABLE usuarios ADD COLUMN cambiar_clave INTEGER NOT NULL DEFAULT 0")
         # El código de barra es el código del producto (P-00001): se pasan los números viejos.
         if con.execute("SELECT 1 FROM productos WHERE codigo_barra != codigo LIMIT 1").fetchone():
             con.execute("UPDATE productos SET codigo_barra = '~' || id")

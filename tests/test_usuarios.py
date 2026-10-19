@@ -2,10 +2,11 @@ import re
 
 from fastapi.testclient import TestClient
 
-from app import db, usuarios
+from app import db, inventario as inv, usuarios
 from app.main import app
 
 CLAVE = "clave-de-prueba"
+TEMPORAL = "temporal-1234"
 
 
 def crear(c, usuario, nombre=None, clave=CLAVE):
@@ -21,35 +22,67 @@ def entrar(c, usuario, clave=CLAVE):
     return c.post("/login", data={"usuario": usuario, "clave": clave})
 
 
+def alta(admin, usuario, rol="usuario", clave=TEMPORAL):
+    """El administrador da de alta una cuenta con contraseña temporal."""
+    return admin.post("/usuarios/nuevo", data={"nombre": usuario.capitalize(), "usuario": usuario,
+                                               "clave": clave, "rol": rol})
+
+
+def primer_ingreso(c, usuario, clave=CLAVE):
+    """Entra con la contraseña temporal y elige la suya; devuelve la página con su código."""
+    entrar(c, usuario, TEMPORAL)
+    return c.post("/cuenta/clave", data={"actual": TEMPORAL, "clave": clave, "repetir": clave})
+
+
 def producto(c, nombre="Molde A", cantidad="5", precio="3.000"):
     return c.post("/productos/nuevo", data={
         "nombre_interno": nombre, "categoria_id": "1", "proveedor": "Pacific", "fecha": "2026-06-05",
         "cantidad": cantidad, "costo_total": "5000", "margen_pct": "40", "precio_venta": precio})
 
 
-def test_la_primera_cuenta_administra_y_las_demas_esperan_aprobacion():
+def test_la_primera_cuenta_administra_y_da_de_alta_las_demas():
     ana, beto = TestClient(app), TestClient(app)
     r = crear(ana, "ana")
     assert "sos el administrador" in r.text and re.fullmatch(r"(\w{4}-){2}\w{4}", codigo_en(r))
     assert r.headers["cache-control"] == "no-store"
     assert ana.get("/usuarios").url.path == "/usuarios"
 
-    r = crear(beto, "beto")
-    assert "espera la aprobación" in r.text
-    assert beto.get("/productos").url.path == "/login"
-    assert "espera la aprobación" in entrar(beto, "beto").text
+    # ya hay cuentas: nadie se crea una desde la entrada
+    r = beto.get("/cuenta/nueva")
+    assert r.url.path == "/login" and "las crea el administrador" in r.text
+    assert "las crea el administrador" in crear(beto, "beto").text
+    assert ana.get("/usuarios").text.count('data-titulo="Usuario"') == 1  # sigue habiendo una sola
+    r = beto.get("/login")
+    assert 'href="/cuenta/nueva"' not in r.text and 'href="/cuenta/recuperar"' in r.text
 
-    r = ana.get("/usuarios")
-    assert "Esperando aprobación" in r.text and re.search(r'class="globo"[^>]*>1<', r.text)
-    assert "Habilitó la cuenta de Beto" in ana.post("/usuarios/2/estado", data={"estado": "activo"}).text
-    assert entrar(beto, "beto").url.path == "/"
+    assert "Cuenta creada" in alta(ana, "beto").text
+    assert "Todavía no eligió su contraseña" in ana.get("/usuarios").text
+    r = entrar(beto, "beto", TEMPORAL)  # con la temporal solo puede elegir la suya
+    assert r.url.path == "/cuenta" and "Elegí tu contraseña" in r.text
+    assert beto.get("/productos").url.path == "/cuenta"
+    r = beto.post("/cuenta/clave", data={"actual": TEMPORAL, "clave": TEMPORAL, "repetir": TEMPORAL})
+    assert "distinta de la actual" in r.text
+    r = beto.post("/cuenta/clave", data={"actual": TEMPORAL, "clave": CLAVE, "repetir": CLAVE})
+    assert "Listo, Beto" in r.text and r.headers["cache-control"] == "no-store"
+    codigo_beto = codigo_en(r)
+    assert beto.get("/productos").url.path == "/productos"
+    assert "Todavía no eligió su contraseña" not in ana.get("/usuarios").text
+
     r = beto.get("/usuarios")  # no es administrador
     assert r.url.path == "/" and "solo para administradores" in r.text
     assert beto.get("/actividad").url.path == "/"
+    beto.post("/usuarios/nuevo", data={"nombre": "Ceci", "usuario": "ceci", "clave": TEMPORAL, "rol": "admin"})
+    assert "ceci" not in ana.get("/usuarios").text  # beto no puede crear cuentas
+
+    # el código que recibió al elegir su contraseña le sirve si la olvida
+    r = TestClient(app).post("/cuenta/recuperar", data={"usuario": "beto", "codigo": codigo_beto,
+                                                        "clave": "otra-clave-9", "repetir": "otra-clave-9"})
+    assert "Contraseña cambiada" in r.text
+    assert entrar(beto, "beto", "otra-clave-9").url.path == "/"
 
     ana.post("/usuarios/2/estado", data={"estado": "bloqueado"})
     assert beto.get("/productos").url.path == "/login"  # la sesión abierta se corta
-    assert "está bloqueada" in entrar(beto, "beto").text
+    assert "está bloqueada" in entrar(beto, "beto", "otra-clave-9").text
 
 
 def test_no_acepta_cuentas_mal_armadas():
@@ -59,7 +92,11 @@ def test_no_acepta_cuentas_mal_armadas():
     r = c.post("/cuenta/nueva", data={"nombre": "Ana", "usuario": "ana", "clave": CLAVE, "repetir": CLAVE + "x"})
     assert "no son iguales" in r.text and 'value="ana"' in r.text
     crear(c, "ana")
-    assert "Ya hay una cuenta" in crear(TestClient(app), "ANA").text
+    assert "Ya hay una cuenta" in alta(c, "ANA").text
+    assert "al menos 8" in alta(c, "beto", clave="corta").text
+    assert "Elegí el perfil" in alta(c, "beto", rol="jefe").text
+    assert "Cuenta creada" in alta(c, "ceci", rol="admin").text
+    assert c.get("/usuarios").text.count("<td data-titulo=\"Perfil\">Administrador</td>") == 2
 
 
 def test_recuperar_la_contrasena_con_el_codigo_sin_correo():
@@ -82,8 +119,8 @@ def test_recuperar_la_contrasena_con_el_codigo_sin_correo():
 def test_el_administrador_genera_un_codigo_para_quien_lo_perdio():
     ana, beto = TestClient(app), TestClient(app)
     crear(ana, "ana")
-    crear(beto, "beto")
-    ana.post("/usuarios/2/estado", data={"estado": "activo"})
+    alta(ana, "beto")
+    primer_ingreso(beto, "beto")
     r = ana.post("/usuarios/2/codigo")
     assert "Código para Beto" in r.text
     r = beto.post("/cuenta/recuperar", data={"usuario": "beto", "codigo": codigo_en(r),
@@ -129,9 +166,8 @@ def test_tiene_que_quedar_un_administrador():
 def test_ventas_por_usuario_y_registro_de_actividad():
     ana, beto = TestClient(app), TestClient(app)
     crear(ana, "ana")
-    crear(beto, "beto")
-    ana.post("/usuarios/2/estado", data={"estado": "activo"})
-    entrar(beto, "beto")
+    alta(ana, "beto")
+    primer_ingreso(beto, "beto")
     producto(ana)
     ana.post("/vender", data={"producto_id": ["1"], "cantidad": ["2"], "medio_pago": "Efectivo"})
     beto.post("/vender", data={"producto_id": ["1"], "cantidad": ["1"], "medio_pago": "Efectivo"})
@@ -150,7 +186,8 @@ def test_ventas_por_usuario_y_registro_de_actividad():
     assert "<td data-titulo=\"Vendió\">Beto</td>" in beto.get("/vender").text
 
     r = ana.get("/actividad")
-    for hecho in ("Creó su cuenta", "Habilitó la cuenta", "Entró al sistema", "Creó un producto",
+    for hecho in ("Creó su cuenta", "Creó un usuario", "Eligió su contraseña", "Entró al sistema",
+                  "Creó un producto",
                   "Registró una venta", "Venta n.º 2: 1 producto(s) por ₲ 3.000"):
         assert hecho in r.text
     assert r.text.count("Registró una venta") == 2
@@ -161,3 +198,67 @@ def test_ventas_por_usuario_y_registro_de_actividad():
     ana.get("/ventas/excel")
     r = ana.get("/actividad")
     assert "Desactivó un producto" in r.text and "Descargó un Excel" in r.text
+
+
+def test_solo_el_admin_cambia_precios_costos_y_cantidades():
+    ana, beto = TestClient(app), TestClient(app)
+    crear(ana, "ana")
+    alta(ana, "beto")
+    primer_ingreso(beto, "beto")
+    producto(ana)  # 5 unidades, precio 3.000
+
+    def ficha(producto_id=1):
+        with db.conexion() as con:
+            return inv.obtener_producto(con, producto_id)
+
+    antes = ficha()
+    for ruta, datos in (("/productos/1/precio", {"precio_venta": "9.000", "origen": "precio"}),
+                        ("/productos/1/margen", {"margen_pct": "90"}),
+                        ("/productos/1/unir", {"destino_id": "1"}),
+                        ("/compras/1/editar", {"cantidad": "1", "costo_total": "1"}),
+                        ("/compras/1/borrar", {})):
+        assert "Solo el administrador puede cambiar precios" in beto.post(ruta, data=datos).text, ruta
+    assert "Solo el administrador puede cambiar precios" in beto.get("/compras/1/editar").text
+    despues = ficha()
+    assert (despues["stock"], despues["precio_venta"], despues["margen_pct"]) == (5, 3000, antes["margen_pct"])
+
+    # en pantalla: precios como texto, sin editar compras ni unir productos
+    r = beto.get("/productos")
+    assert 'action="/productos/1/precio"' not in r.text and "₲ 3.000" in r.text
+    assert "/compras/1/editar" not in beto.get("/compras").text
+    r = beto.get("/productos/1/editar")
+    assert 'name="precio_venta"' not in r.text and 'id="buscador-unir"' not in r.text
+    assert "los cambia el administrador" in r.text
+
+    # puede editar el resto de la ficha, pero el precio que mande no se toma
+    beto.post("/productos/1/editar", data={"nombre_interno": "Molde A grande", "categoria_id": "1",
+                                           "margen_pct": "300", "precio_venta": "99.999", "activo": "1"})
+    p = ficha()
+    assert p["nombre_interno"] == "Molde A grande" and p["precio_venta"] == 3000 and p["stock"] == 5
+
+    # productos nuevos: sin compra ni precio, para que el administrador los complete
+    r = beto.get("/productos/nuevo")
+    assert 'name="cantidad"' not in r.text and 'name="precio_venta"' not in r.text and "stock 0" in r.text
+    beto.post("/productos/nuevo", data={"nombre_interno": "Vela nueva", "categoria_id": "1", "proveedor": "X",
+                                        "cantidad": "50", "costo_total": "100000", "precio_venta": "5000"})
+    nuevo = ficha(2)
+    assert nuevo["nombre_interno"] == "Vela nueva" and nuevo["stock"] == 0 and nuevo["precio_venta"] == 0
+    assert nuevo["revisar"] == 1
+    with db.conexion() as con:
+        assert con.execute("SELECT COUNT(*) FROM compras").fetchone()[0] == 1
+    beto.post("/productos/2/editar", data={"nombre_interno": "Vela nueva roja", "categoria_id": "1", "activo": "1"})
+    assert ficha(2)["revisar"] == 1  # sigue esperando al administrador
+    ana.post("/productos/2/editar", data={"nombre_interno": "Vela nueva roja", "categoria_id": "1",
+                                          "margen_pct": "40", "precio_venta": "5.000", "activo": "1"})
+    assert ficha(2)["revisar"] == 0 and ficha(2)["precio_venta"] == 5000
+
+    # el stock solo baja con ventas, y vender lo puede cualquiera
+    beto.post("/vender", data={"producto_id": ["1"], "cantidad": ["2"], "medio_pago": "Efectivo"})
+    assert ficha()["stock"] == 3
+
+    # el administrador sí puede
+    r = ana.post("/productos/1/precio", data={"precio_venta": "4.000", "origen": "precio"})
+    assert "precio ₲ 4.000" in r.text
+    r = ana.post("/compras/1/editar", data={"fecha": "2026-06-05", "nro_factura": "", "proveedor": "Pacific SA",
+                                            "cantidad": "5", "costo_total": "5000"})
+    assert "Solo el administrador" not in r.text and "Compra corregida" in r.text
