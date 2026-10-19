@@ -225,7 +225,8 @@ def test_pide_usuario_y_contrasena():
         assert c.get("/salir").url.path == "/login"
         r = c.get("/productos")
         assert r.url.path == "/login"
-        assert 'href="/cuenta/nueva"' in r.text and 'href="/cuenta/recuperar"' in r.text
+        # las cuentas las crea el administrador: en la entrada solo queda recuperar la contraseña
+        assert 'href="/cuenta/nueva"' not in r.text and 'href="/cuenta/recuperar"' in r.text
         r = c.post("/login", data={"usuario": "ana", "clave": "otra-cosa"})
         assert "no son correctos" in r.text
         r = c.post("/login", data={"usuario": "ANA ", "clave": CLAVE})

@@ -35,7 +35,7 @@
       <td data-titulo="Precio unitario" class="num">{{ c.costo_unitario|gs }}</td>
       <td data-titulo="Precio total" class="num"><b>{{ c.costo_total|gs }}</b></td>
       <td data-titulo="Factura" class="no-imprimir">{% if c.foto_factura %}<a href="/archivo/{{ c.foto_factura }}" target="_blank">📷 Ver</a>{% else %}—{% endif %}</td>
-      <td class="no-imprimir"><a class="boton chico" href="/compras/{{ c.lote_id }}/editar">✏️ Editar</a></td>
+      <td class="no-imprimir">{% if usuario.rol == 'admin' %}<a class="boton chico" href="/compras/{{ c.lote_id }}/editar">✏️ Editar</a>{% endif %}</td>
     </tr>
   {% else %}
     <tr><td colspan="10">Todavía no hay compras cargadas.</td></tr>

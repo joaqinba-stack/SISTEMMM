@@ -184,7 +184,10 @@ def crear_producto(con: sqlite3.Connection, datos: dict) -> dict:
     return {"id": producto_id, "codigo": codigo, "codigo_barra": barra}
 
 
-def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) -> None:
+def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict,
+                        quitar_revisar: bool = True) -> None:
+    """Guarda la ficha. Sin margen_pct o precio_venta en datos, quedan los que tenía.
+    quitar_revisar=False deja el producto «para revisar» (lo editó alguien que no pone precios)."""
     actual = con.execute("SELECT * FROM productos WHERE id = ?", (producto_id,)).fetchone()
     if not actual:
         raise ErrorNegocio("Ese producto no existe.")
@@ -196,7 +199,7 @@ def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) 
     con.execute(
         """UPDATE productos SET nombre_interno = ?, nombre_proveedor = ?, marca = ?,
                categoria_id = ?, imagen = ?, margen_pct = ?, precio_venta = ?,
-               activo = ?, revisar = 0
+               activo = ?, revisar = ?
            WHERE id = ?""",
         (
             nombre,
@@ -207,6 +210,7 @@ def actualizar_producto(con: sqlite3.Connection, producto_id: int, datos: dict) 
             margen,
             int(round(precio or 0)),
             1 if datos.get("activo") else 0,
+            0 if quitar_revisar else actual["revisar"],
             producto_id,
         ),
     )

@@ -26,6 +26,9 @@
     </label>
   </fieldset>
 
+  {% if usuario.rol != 'admin' %}
+  <div class="tarjeta alerta">El producto queda con <b>stock 0</b> y marcado para revisar: el administrador carga la compra, el costo y el precio de venta.</div>
+  {% else %}
   <fieldset>
     <legend>La compra</legend>
     <label>Nombre del proveedor <span class="obligatorio">*</span>
@@ -68,6 +71,7 @@
     </div>
     <p class="ayuda chica">El precio se calcula solo: precio por unidad + {{ margen|int }}%. Si querés otro, escribilo y el % se ajusta.</p>
   </fieldset>
+  {% endif %}
 
   <div class="botones">
     <a class="boton grande" href="/productos">✖ Cancelar</a>

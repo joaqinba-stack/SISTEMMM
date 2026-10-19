@@ -65,15 +65,16 @@ Abrí **http://localhost:8000** en el navegador. Desde el celular, en la misma r
 Para que el sistema esté siempre prendido y se entre con una dirección propia. Alcanza con un
 servidor chico (1 vCPU y 2 GB de memoria) con Ubuntu y Docker.
 
-1. Hacé que un nombre apunte a la IP del servidor (un registro **A** en tu dominio). Si todavía no
-   hay dominio, sirve la IP con guiones y `.sslip.io`, por ejemplo `203-0-113-10.sslip.io`.
+1. Hacé que un nombre apunte a la IP del servidor (un registro **A** en tu dominio) y ponelo en
+   `DOMINIO`. Si todavía no hay dominio, poné en `DOMINIO` la IP pública del servidor y
+   `CERTIFICADO=shortlived`: se entra por `https://LA-IP` con candado igual.
 2. En el servidor:
 
    ```bash
    git clone https://github.com/joaqinba-stack/SISTEMMM.git inventario
    cd inventario
    cp .env.example .env
-   nano .env            # completar DOMINIO, TELEGRAM_TOKEN y ANTHROPIC_API_KEY
+   nano .env            # completar DOMINIO (y CERTIFICADO), TELEGRAM_TOKEN y ANTHROPIC_API_KEY
    docker compose up -d --build
    ```
 
@@ -100,16 +101,26 @@ Caddy pide y renueva solo el certificado (el candado). Hacen falta abiertos los 
 
 ## Cuentas de usuario
 
-Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla de entrada están
-**Crear una cuenta** y **Olvidé mi contraseña**.
+Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla de entrada está
+**Olvidé mi contraseña**.
 
-- **La primera cuenta que se crea es la del administrador** y entra enseguida. Creala apenas
-  arranques el sistema por primera vez.
-- Las cuentas siguientes quedan **esperando aprobación**: el administrador las habilita en
-  **👤 (tu nombre) → Usuarios**. Ahí también se bloquea una cuenta o se la hace administradora.
-- **Recuperar la contraseña sin correo:** al crear la cuenta el sistema muestra una sola vez un
-  **código de recuperación** (por ejemplo `ABCD-EFGH-JKLM`). Hay que guardarlo. Con el usuario y
-  ese código se elige una contraseña nueva en *Olvidé mi contraseña*, y se entrega un código nuevo.
+- **La primera cuenta es la del administrador**: en una instalación nueva, la pantalla de entrada
+  ofrece crearla. Creala apenas arranques el sistema por primera vez. Después ya nadie puede
+  crearse una cuenta solo.
+- **Las demás cuentas las crea el administrador** en **👤 (tu nombre) → Usuarios → Nuevo usuario**,
+  con una **contraseña temporal**. La persona la tiene que cambiar la primera vez que entra (hasta
+  entonces no puede hacer otra cosa). En Usuarios también se bloquea una cuenta o se la hace administradora.
+- **Qué puede hacer cada perfil:**
+  - **Usuario:** vender, ver productos y compras, cargar productos nuevos **sin compra ni precio**
+    (quedan con stock 0 y «para revisar»), editar nombre, categoría y foto, imprimir etiquetas y ver sus ventas.
+  - **Administrador:** además, cambiar **precios, costos, cantidades y %**, corregir o borrar
+    compras, unir productos repetidos, crear y bloquear cuentas y ver el registro de actividad.
+- **El stock solo baja con ventas.** Lo único que puede bajarlo de otra forma es que el administrador
+  corrija o borre una compra mal cargada (y queda en el registro de actividad).
+- **Recuperar la contraseña sin correo:** cuando la persona elige su contraseña, el sistema le
+  muestra una sola vez un **código de recuperación** (por ejemplo `ABCD-EFGH-JKLM`). Hay que guardarlo.
+  Con el usuario y ese código se elige una contraseña nueva en *Olvidé mi contraseña*, y se entrega
+  un código nuevo. El administrador nunca ve ni la contraseña ni el código de los demás.
 - Si alguien perdió también el código, el administrador le genera otro desde **Usuarios**.
   Si es el propio administrador el que quedó afuera, se rescata desde la computadora del sistema:
   `python scripts/restablecer_acceso.py USUARIO --admin`

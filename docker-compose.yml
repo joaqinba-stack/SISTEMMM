@@ -24,6 +24,8 @@ services:
       - "443:443"
     environment:
       DOMINIO: ${DOMINIO}
+      CERTIFICADO: ${CERTIFICADO:-classic}
+      DOMINIO_EXTRA: ${DOMINIO_EXTRA:-http://sin-nombre-extra.invalid}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -11,6 +11,9 @@
 {% elif motivo == 'recuperada' %}
   <h2>✅ Contraseña cambiada</h2>
   <p>Ya podés entrar con la contraseña nueva. El código que usaste dejó de servir.</p>
+{% elif motivo == 'primera' %}
+  <h2>✅ Listo, {{ cuenta.nombre }}</h2>
+  <p>Ya tenés tu contraseña. Ahora guardá tu código de recuperación: sirve para cambiar la contraseña si un día te la olvidás.</p>
 {% elif motivo == 'admin' %}
   <h2>🔑 Código para {{ cuenta.nombre }}</h2>
   <p>Pasale este código a <b>{{ cuenta.nombre }}</b> (usuario <span class="mono">{{ cuenta.usuario }}</span>). Lo usa en <i>Olvidé mi contraseña</i> para elegir una contraseña nueva. El código anterior dejó de servir.</p>
@@ -30,7 +33,7 @@
     <a class="boton grande principal" href="/usuarios">Ya se lo pasé</a>
   {% elif motivo == 'propio' %}
     <a class="boton grande principal" href="/cuenta">Ya lo guardé</a>
-  {% elif motivo == 'nueva' and cuenta.estado == 'activo' %}
+  {% elif motivo == 'primera' or (motivo == 'nueva' and cuenta.estado == 'activo') %}
     <a class="boton grande principal" href="/">Ya lo guardé, entrar</a>
   {% else %}
     <a class="boton grande principal" href="/login">Ya lo guardé</a>

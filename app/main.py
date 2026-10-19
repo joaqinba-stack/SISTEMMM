@@ -59,6 +59,9 @@ plantillas.env.filters["fecha"] = inv.fecha_txt
 
 SIN_SESION = ("/static", "/login", "/cuenta/nueva", "/cuenta/recuperar")
 SOLO_ADMIN = ("/usuarios", "/actividad")
+# Precios, costos y cantidades: solo el administrador. El stock solo baja con ventas; corregir o
+# borrar una compra o unir productos (que mueve stock) también es cosa del administrador.
+SOLO_ADMIN_RUTAS = re.compile(r"^/(productos/\d+/(precio|margen|unir)|compras/\d+/(editar|borrar))/?$")
 
 
 @app.middleware("http")
@@ -77,9 +80,17 @@ async def exigir_sesion(request: Request, siguiente):
     ruta = request.url.path
     if request.state.usuario is None and not ruta.startswith(SIN_SESION):
         return RedirectResponse("/login", status_code=303)
-    if ruta.startswith(SOLO_ADMIN) and request.state.usuario["rol"] != "admin":
+    yo = request.state.usuario
+    if yo is not None and yo["cambiar_clave"] and not (
+            ruta in ("/cuenta", "/cuenta/clave") or ruta.startswith(("/static", "/salir"))):
+        return RedirectResponse("/cuenta", status_code=303)
+    if ruta.startswith(SOLO_ADMIN) and yo["rol"] != "admin":
         avisar(request, "Esa pantalla es solo para administradores.", "error")
         return RedirectResponse("/", status_code=303)
+    if SOLO_ADMIN_RUTAS.match(ruta) and yo["rol"] != "admin":
+        avisar(request, "Solo el administrador puede cambiar precios, costos y cantidades.", "error")
+        volver = "/compras" if ruta.startswith("/compras") else "/productos"
+        return RedirectResponse(volver, status_code=303)
     respuesta = await siguiente(request)
     if (request.method == "POST" and request.state.usuario is not None
             and not request.state.anotado and respuesta.status_code < 400):
@@ -107,6 +118,10 @@ def anotar(request: Request, accion: str, detalle: str = "") -> None:
     request.state.anotado = True
     with db.conexion() as con:
         usuarios.registrar(con, request.state.usuario, accion, detalle)
+
+
+def es_admin(request: Request) -> bool:
+    return bool(request.state.usuario) and request.state.usuario["rol"] == "admin"
 
 
 def abrir_sesion(request: Request, cuenta) -> None:
@@ -213,9 +228,16 @@ def salir(request: Request):
 
 @app.get("/cuenta/nueva", response_class=HTMLResponse)
 def cuenta_nueva(request: Request):
+    """Solo para crear la primera cuenta (la del administrador) en una instalación nueva."""
     with db.conexion() as con:
-        sin_cuentas = not usuarios.listar(con)
-    return pagina(request, "cuenta_nueva.html", sin_cuentas=sin_cuentas)
+        if usuarios.listar(con):
+            return _cuentas_las_crea_el_admin(request)
+    return pagina(request, "cuenta_nueva.html", sin_cuentas=True)
+
+
+def _cuentas_las_crea_el_admin(request: Request) -> RedirectResponse:
+    avisar(request, "Las cuentas las crea el administrador. Pedile que te dé de alta.", "error")
+    return ir("/login")
 
 
 @app.post("/cuenta/nueva")
@@ -223,16 +245,15 @@ def cuenta_nueva_guardar(request: Request, nombre: str = Form(""), usuario: str 
                          clave: str = Form(""), repetir: str = Form("")):
     try:
         with db.conexion() as con:
+            if usuarios.listar(con):
+                return _cuentas_las_crea_el_admin(request)
             cuenta, codigo = usuarios.crear(con, usuario, nombre, clave, repetir)
             usuarios.registrar(con, cuenta, "Creó su cuenta", usuarios.ESTADOS[cuenta["estado"]])
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
-        with db.conexion() as con:
-            sin_cuentas = not usuarios.listar(con)
-        return pagina(request, "cuenta_nueva.html", sin_cuentas=sin_cuentas,
+        return pagina(request, "cuenta_nueva.html", sin_cuentas=True,
                       nombre_escrito=nombre.strip(), usuario_escrito=usuario.strip())
-    if cuenta["estado"] == "activo":  # la primera cuenta es la del administrador y entra enseguida
-        abrir_sesion(request, cuenta)
+    abrir_sesion(request, cuenta)  # la primera cuenta es la del administrador y entra enseguida
     return pagina_codigo(request, cuenta, codigo, "nueva")
 
 
@@ -260,12 +281,18 @@ def cuenta(request: Request):
 
 @app.post("/cuenta/clave")
 def cuenta_clave(request: Request, actual: str = Form(""), clave: str = Form(""), repetir: str = Form("")):
+    yo = request.state.usuario
     try:
         with db.conexion() as con:
-            request.session["sv"] = usuarios.cambiar_clave(con, request.state.usuario["id"], actual, clave, repetir)
+            request.session["sv"] = usuarios.cambiar_clave(con, yo["id"], actual, clave, repetir)
+            # La primera vez (venía con la contraseña temporal del administrador) recibe su código.
+            codigo = usuarios.regenerar_codigo(con, yo["id"]) if yo["cambiar_clave"] else None
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/cuenta")
+    if codigo:
+        anotar(request, "Eligió su contraseña", "Reemplazó la contraseña temporal")
+        return pagina_codigo(request, yo, codigo, "primera")
     anotar(request, "Cambió su contraseña")
     avisar(request, "✅ Contraseña cambiada. Las otras sesiones abiertas con esta cuenta se cerraron.")
     return ir("/cuenta")
@@ -290,6 +317,23 @@ def usuarios_lista(request: Request):
     with db.conexion() as con:
         return pagina(request, "usuarios.html", cuentas=usuarios.listar(con),
                       roles=usuarios.ROLES, estados=usuarios.ESTADOS)
+
+
+@app.post("/usuarios/nuevo")
+def usuario_nuevo(request: Request, nombre: str = Form(""), usuario: str = Form(""),
+                  clave: str = Form(""), rol: str = Form("usuario")):
+    """El administrador da de alta una cuenta con una contraseña temporal; la persona elige la
+    suya al entrar por primera vez y ahí recibe su código de recuperación."""
+    try:
+        with db.conexion() as con:
+            cuenta, _ = usuarios.crear(con, usuario, nombre, clave, rol=rol, clave_temporal=True)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir("/usuarios")
+    anotar(request, "Creó un usuario", f"{cuenta['nombre']} ({cuenta['usuario']}), {usuarios.ROLES[cuenta['rol']]}")
+    avisar(request, f"✅ Cuenta creada. Pasale a {cuenta['nombre']} el usuario «{cuenta['usuario']}» y la "
+                    "contraseña temporal: la va a tener que cambiar al entrar.")
+    return ir("/usuarios")
 
 
 @app.post("/usuarios/{usuario_id}/estado")
@@ -397,14 +441,17 @@ async def producto_nuevo_guardar(
     imagen: UploadFile | None = File(None),
 ):
     ruta_imagen = await guardar_imagen(imagen, "productos")
+    datos = {"nombre_interno": nombre_interno, "marca": marca, "categoria_id": categoria_id,
+             "nombre_proveedor": nombre_proveedor, "imagen": ruta_imagen}
+    if es_admin(request):
+        datos.update({"proveedor": proveedor, "fecha": fecha, "nro_factura": nro_factura,
+                      "cantidad": cantidad, "costo_total": costo_total,
+                      "margen_pct": margen_pct, "precio_venta": precio_venta})
+    else:  # sin compra ni precios: queda con stock 0 para que el administrador los complete
+        datos.update({"cantidad": 0, "costo_total": 0, "revisar": True})
     try:
         with db.conexion() as con:
-            creado = inv.crear_producto(con, {
-                "nombre_interno": nombre_interno, "marca": marca, "categoria_id": categoria_id,
-                "proveedor": proveedor, "nombre_proveedor": nombre_proveedor, "fecha": fecha,
-                "nro_factura": nro_factura, "cantidad": cantidad, "costo_total": costo_total,
-                "margen_pct": margen_pct, "precio_venta": precio_venta, "imagen": ruta_imagen,
-            })
+            creado = inv.crear_producto(con, datos)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir("/productos/nuevo")
@@ -480,14 +527,15 @@ async def producto_editar_guardar(
     imagen: UploadFile | None = File(None),
 ):
     ruta_imagen = await guardar_imagen(imagen, "productos")
+    admin = es_admin(request)
+    datos = {"nombre_interno": nombre_interno, "nombre_proveedor": nombre_proveedor,
+             "marca": marca, "categoria_id": categoria_id,
+             "activo": activo == "1", "imagen": ruta_imagen}
+    if admin:  # el % y el precio los cambia solo el administrador
+        datos.update({"margen_pct": margen_pct, "precio_venta": precio_venta})
     try:
         with db.conexion() as con:
-            inv.actualizar_producto(con, producto_id, {
-                "nombre_interno": nombre_interno, "nombre_proveedor": nombre_proveedor,
-                "marca": marca, "categoria_id": categoria_id,
-                "margen_pct": margen_pct, "precio_venta": precio_venta,
-                "activo": activo == "1", "imagen": ruta_imagen,
-            })
+            inv.actualizar_producto(con, producto_id, datos, quitar_revisar=admin)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/productos/{producto_id}/editar")

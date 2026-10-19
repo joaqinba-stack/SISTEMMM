@@ -85,9 +85,12 @@ def pendientes(con: sqlite3.Connection) -> int:
 # ---------------------------------------------------------------- crear cuenta y entrar
 
 def crear(con: sqlite3.Connection, usuario: str, nombre: str, clave: str,
-          repetir: str | None = None) -> tuple[sqlite3.Row, str]:
-    """Crea la cuenta y devuelve (cuenta, código de recuperación). La primera cuenta es
-    administradora y entra enseguida; las demás esperan la aprobación de un administrador."""
+          repetir: str | None = None, rol: str | None = None,
+          clave_temporal: bool = False) -> tuple[sqlite3.Row, str]:
+    """Crea la cuenta y devuelve (cuenta, código de recuperación).
+    Sin rol: la primera cuenta es administradora y entra enseguida; las demás esperan aprobación.
+    Con rol (la crea un administrador): queda activa con ese perfil. clave_temporal obliga a
+    cambiar la contraseña al entrar por primera vez."""
     usuario = (usuario or "").strip().lower()
     nombre = re.sub(r"\s+", " ", nombre or "").strip()[:60] or usuario
     if not re.fullmatch(r"[a-z0-9._-]{3,30}", usuario):
@@ -95,15 +98,21 @@ def crear(con: sqlite3.Connection, usuario: str, nombre: str, clave: str,
     _validar_clave(clave, repetir)
     if _buscar(con, usuario):
         raise ErrorNegocio("Ya hay una cuenta con ese usuario. Elegí otro.")
-    primera = con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0
-    if not primera and pendientes(con) >= MAX_PENDIENTES:
-        raise ErrorNegocio("Hay muchas cuentas esperando aprobación. Pedile a un administrador que las revise.")
+    if rol is not None:
+        if rol not in ROLES:
+            raise ErrorNegocio("Elegí el perfil de la cuenta.")
+        estado = "activo"
+    else:
+        primera = con.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0
+        if not primera and pendientes(con) >= MAX_PENDIENTES:
+            raise ErrorNegocio("Hay muchas cuentas esperando aprobación. Pedile a un administrador que las revise.")
+        rol, estado = ("admin", "activo") if primera else ("usuario", "pendiente")
     codigo = nuevo_codigo()
     usuario_id = con.execute(
-        """INSERT INTO usuarios (usuario, nombre, clave_hash, recuperacion_hash, rol, estado)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (usuario, nombre, _hash(clave), _hash(_limpiar_codigo(codigo)),
-         "admin" if primera else "usuario", "activo" if primera else "pendiente"),
+        """INSERT INTO usuarios (usuario, nombre, clave_hash, recuperacion_hash, rol, estado, cambiar_clave)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (usuario, nombre, _hash(clave), _hash(_limpiar_codigo(codigo)), rol, estado,
+         1 if clave_temporal else 0),
     ).lastrowid
     return obtener(con, usuario_id), codigo
 
@@ -169,7 +178,7 @@ def recuperar(con: sqlite3.Connection, usuario: str, codigo: str, clave: str,
     nuevo = nuevo_codigo()
     con.execute(
         """UPDATE usuarios SET clave_hash = ?, recuperacion_hash = ?, sesion = sesion + 1,
-                               intentos = 0, bloqueado_hasta = NULL WHERE id = ?""",
+                               cambiar_clave = 0, intentos = 0, bloqueado_hasta = NULL WHERE id = ?""",
         (_hash(clave), _hash(_limpiar_codigo(nuevo)), fila["id"]))
     registrar(con, fila, "Recuperó su contraseña", "Con el código de recuperación")
     return nuevo, ""
@@ -187,7 +196,9 @@ def cambiar_clave(con: sqlite3.Connection, usuario_id: int, actual: str, nueva: 
     if not fila or not _coincide(actual or "", fila["clave_hash"]):
         raise ErrorNegocio("La contraseña actual no es correcta.")
     _validar_clave(nueva, repetir)
-    con.execute("UPDATE usuarios SET clave_hash = ?, sesion = sesion + 1 WHERE id = ?",
+    if _coincide(nueva or "", fila["clave_hash"]):
+        raise ErrorNegocio("La contraseña nueva tiene que ser distinta de la actual.")
+    con.execute("UPDATE usuarios SET clave_hash = ?, sesion = sesion + 1, cambiar_clave = 0 WHERE id = ?",
                 (_hash(nueva), usuario_id))
     return fila["sesion"] + 1
 

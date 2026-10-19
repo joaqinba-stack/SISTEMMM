@@ -1,5 +1,27 @@
-# Caddy pide y renueva solo el certificado HTTPS del dominio.
-{$DOMINIO} {
+# Caddy pide y renueva solo el certificado HTTPS de la dirección (dominio o IP pública).
+{
+	# Cuando se entra por la IP, el navegador no dice a qué nombre va: se le da este certificado.
+	default_sni {$DOMINIO}
+}
+
+(inventario) {
 	encode gzip
 	reverse_proxy app:8000
+}
+
+{$DOMINIO} {
+	tls {
+		issuer acme {
+			# «classic» para un dominio; «shortlived» cuando DOMINIO es la IP del servidor.
+			profile {$CERTIFICADO:classic}
+		}
+	}
+	import inventario
+}
+
+# Segundo nombre opcional (DOMINIO_EXTRA) que lleva a la dirección principal. Sirve cuando
+# DOMINIO es la IP: WhatsApp y otras aplicaciones solo convierten en enlace las direcciones
+# con nombre. Con «http://» adelante no pide certificado para ese nombre.
+{$DOMINIO_EXTRA:http://sin-nombre-extra.invalid} {
+	redir https://{$DOMINIO}{uri}
 }
