@@ -113,10 +113,15 @@ Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla 
 - **Qué puede hacer cada perfil:**
   - **Usuario:** vender, ver productos y compras, cargar productos nuevos **sin compra ni precio**
     (quedan con stock 0 y «para revisar»), editar nombre, categoría y foto, imprimir etiquetas y ver sus ventas.
-  - **Administrador:** además, cambiar **precios, costos, cantidades y %**, corregir o borrar
-    compras, unir productos repetidos, crear y bloquear cuentas y ver el registro de actividad.
-- **El stock solo baja con ventas.** Lo único que puede bajarlo de otra forma es que el administrador
-  corrija o borre una compra mal cargada (y queda en el registro de actividad).
+  - **Administrador:** además, cambiar **precios, costos, cantidades y %**, **ajustar el stock**,
+    corregir o borrar compras, unir productos repetidos, crear y bloquear cuentas y ver el registro de actividad.
+- **El stock baja con ventas.** Fuera de eso, solo el administrador lo cambia, y todo queda en el
+  registro de actividad:
+  - **📦 Ajustar stock** (en **Editar** de cada producto): se escribe cuántas unidades hay en
+    realidad y el motivo (conteo, se rompió, se perdió…). Si hay menos, se descuentan de las compras
+    más viejas primero; si hay más, la diferencia entra como «📦 Ajuste de stock» en Compras, al costo
+    de la última compra. La ficha muestra los últimos ajustes.
+  - Corregir o borrar una compra mal cargada (mientras no hayan salido unidades de ella).
 - **Recuperar la contraseña sin correo:** cuando la persona elige su contraseña, el sistema le
   muestra una sola vez un **código de recuperación** (por ejemplo `ABCD-EFGH-JKLM`). Hay que guardarlo.
   Con el usuario y ese código se elige una contraseña nueva en *Olvidé mi contraseña*, y se entrega

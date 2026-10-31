@@ -63,6 +63,50 @@
 </form>
 
 {% if usuario.rol == 'admin' %}
+<section class="tarjeta" id="stock">
+  <h2>📦 Ajustar stock</h2>
+  <p class="ayuda">Ahora el sistema dice que hay <b>{{ p.stock|cant }}</b>. Si contaste y hay otra cantidad
+    (se rompió, se perdió, se usó, sobraron), escribí cuántas hay <b>en realidad</b> y el motivo.
+    El stock queda en ese número y el cambio se anota en el registro de actividad.</p>
+  <form method="post" action="/productos/{{ p.id }}/stock" class="formulario sin-borde"
+        data-confirmar="¿Seguro? El stock de «{{ p.nombre_interno }}» va a quedar en la cantidad que escribiste.">
+    <div class="dos-columnas">
+      <label>¿Cuántas hay en realidad? <span class="obligatorio">*</span>
+        <input name="cantidad" inputmode="decimal" required autocomplete="off" placeholder="Ej.: {{ p.stock|cant }}">
+      </label>
+      <label>Motivo <span class="obligatorio">*</span>
+        <input name="motivo" list="motivos-ajuste" required maxlength="200" placeholder="Ej.: conteo, se rompió…">
+        <datalist id="motivos-ajuste">
+          <option value="Conteo de inventario"><option value="Se rompió"><option value="Se perdió">
+          <option value="Uso interno"><option value="Regalo / muestra"><option value="Error de carga">
+        </datalist>
+      </label>
+    </div>
+    <div class="botones"><button class="boton grande principal" type="submit">📦 Guardar stock</button></div>
+  </form>
+  {% if ajustes %}
+  <h3>Últimos ajustes</h3>
+  <div class="tabla-envoltura">
+  <table class="tabla">
+    <thead><tr><th>Fecha</th><th class="num">Antes</th><th class="num">Después</th><th class="num">Cambio</th><th>Motivo</th><th>Quién</th></tr></thead>
+    <tbody>
+    {% for a in ajustes %}
+      {% set cambio = a.stock_despues - a.stock_antes %}
+      <tr>
+        <td data-titulo="Fecha">{{ a.fecha|fecha }} {{ a.fecha[11:16] }}</td>
+        <td data-titulo="Antes" class="num">{{ a.stock_antes|cant }}</td>
+        <td data-titulo="Después" class="num"><b>{{ a.stock_despues|cant }}</b></td>
+        <td data-titulo="Cambio" class="num">{{ '+' if cambio > 0 }}{{ cambio|cant }}</td>
+        <td data-titulo="Motivo">{{ a.motivo }}</td>
+        <td data-titulo="Quién">{{ a.usuario or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+
 <section class="tarjeta unir" id="unir">
   <h2>🔁 ¿Este producto ya existía con otro nombre?</h2>
   <p class="ayuda">Si la factura creó este producto por error, elegí acá el producto correcto. La compra y el stock pasan a ese producto, este se borra (con su código <b class="mono">{{ p.codigo }}</b>) y la próxima factura con este nombre se reconoce sola.</p>

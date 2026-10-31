@@ -62,7 +62,7 @@
         {% for f in facturas %}
           <tr>
             <td data-titulo="Fecha">{{ f.fecha|fecha }}</td>
-            <td data-titulo="Proveedor">{{ f.proveedor or '—' }}{% if f.origen == 'telegram' %} <span class="etiqueta" title="Llegó por Telegram">📱</span>{% endif %}</td>
+            <td data-titulo="Proveedor">{% if f.origen == 'ajuste' %}📦 Ajuste de stock{% else %}{{ f.proveedor or '—' }}{% endif %}{% if f.origen == 'telegram' %} <span class="etiqueta" title="Llegó por Telegram">📱</span>{% endif %}</td>
             <td data-titulo="N° factura" class="mono">{{ f.nro_factura or '—' }}</td>
             <td data-titulo="Etiquetas" class="num">{{ f.unidades|cant }} <span class="suave chica">({{ f.renglones }} producto{{ 's' if f.renglones != 1 }})</span></td>
             <td>
