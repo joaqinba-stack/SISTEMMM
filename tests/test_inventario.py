@@ -230,12 +230,15 @@ def test_ajustar_stock_sube_y_hasta_cero(con):
 def test_ajustar_stock_rechaza_datos_malos(con):
     p = inv.crear_producto(con, {"nombre_interno": "X", "cantidad": 2, "costo_total": 100})
     for cantidad, motivo, error in (("", "Conteo", "cuántas"), ("-1", "Conteo", "menor a cero"),
-                                    ("5", "  ", "motivo"), ("2", "Conteo", "ya es 2")):
+                                    ("2", "Conteo", "ya es 2")):
         with pytest.raises(inv.ErrorNegocio, match=error):
             inv.ajustar_stock(con, p["id"], cantidad, motivo)
     with pytest.raises(inv.ErrorNegocio, match="no existe"):
         inv.ajustar_stock(con, 999, "1", "Conteo")
     assert inv.stock(con, p["id"]) == 2 and inv.listar_ajustes(con, p["id"]) == []
+    # el motivo es opcional
+    inv.ajustar_stock(con, p["id"], "5", "  ")
+    assert inv.listar_ajustes(con, p["id"])[0]["motivo"] == "Corrección manual"
 
 
 def test_unir_productos_lleva_los_ajustes(con):

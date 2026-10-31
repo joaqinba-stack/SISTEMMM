@@ -9,7 +9,7 @@
     <div>Código: <b class="mono">{{ p.codigo }}</b></div>
     <div>Código de barra:<br><img class="barra-img" src="/barra/{{ p.codigo_barra }}.svg" alt="{{ p.codigo_barra }}"></div>
     <div><a class="boton chico" href="/etiquetas?producto_id={{ p.id }}#producto">🏷️ Imprimir etiquetas de este producto</a></div>
-    <div>En stock: <b>{{ p.stock|cant }}</b> · Costo de la última compra: <b>{{ p.costo_ultimo|gs }}</b></div>
+    <div>En stock: <b>{{ p.stock|cant }}</b>{% if usuario.rol == 'admin' %} <a class="boton chico" href="#stock">✏️ Cambiar</a>{% endif %} · Costo de la última compra: <b>{{ p.costo_ultimo|gs }}</b></div>
   </div>
 </div>
 
@@ -66,7 +66,7 @@
 <section class="tarjeta ajustar-stock" id="stock">
   <h2>📦 Ajustar stock</h2>
   <p class="ayuda">Ahora el sistema dice que hay <b>{{ p.stock|cant }}</b>. Si contaste y hay otra cantidad
-    (se rompió, se perdió, se usó, sobraron), escribí cuántas hay <b>en realidad</b> y el motivo.
+    (se rompió, se perdió, se usó, sobraron), escribí cuántas hay <b>en realidad</b> (y si querés, el motivo).
     El stock queda en ese número y el cambio se anota en el registro de actividad.</p>
   <form method="post" action="/productos/{{ p.id }}/stock" class="formulario sin-borde"
         data-confirmar="¿Seguro? El stock de «{{ p.nombre_interno }}» va a quedar en la cantidad que escribiste.">
@@ -74,8 +74,8 @@
       <label>¿Cuántas hay en realidad? <span class="obligatorio">*</span>
         <input name="cantidad" inputmode="decimal" required autocomplete="off" placeholder="Ej.: {{ p.stock|cant }}">
       </label>
-      <label>Motivo <span class="obligatorio">*</span>
-        <input name="motivo" list="motivos-ajuste" required maxlength="200" placeholder="Ej.: conteo, se rompió…">
+      <label>Motivo
+        <input name="motivo" list="motivos-ajuste" maxlength="200" placeholder="Ej.: conteo, se rompió…">
         <datalist id="motivos-ajuste">
           <option value="Conteo de inventario"><option value="Se rompió"><option value="Se perdió">
           <option value="Uso interno"><option value="Regalo / muestra"><option value="Error de carga">

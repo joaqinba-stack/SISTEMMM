@@ -57,7 +57,20 @@
         </span>
       </td>
       {% endif %}
+      {% if usuario.rol == 'admin' %}
+      <td data-titulo="En stock" class="num">
+        <form method="post" action="/productos/{{ p.id }}/stock" class="precio-fila stock-form"
+              data-confirmar="¿Guardar el nuevo stock de «{{ p.nombre_interno }}»?">
+          <input type="hidden" name="volver" value="lista">
+          <span class="campo-con-unidad"><input name="cantidad" inputmode="decimal" value="{{ p.stock|cant }}"
+                 class="stock {{ 'rojo' if p.stock <= 0 }}" data-stock-id="{{ p.id }}" required
+                 aria-label="Stock de {{ p.nombre_interno }}"></span>
+          <button class="boton chico" type="submit" title="Guardar el stock">✓</button>
+        </form>
+      </td>
+      {% else %}
       <td data-titulo="En stock" class="num stock {{ 'rojo' if p.stock <= 0 }}" data-stock-id="{{ p.id }}">{{ p.stock|cant }}</td>
+      {% endif %}
       <td data-titulo="Activo">
         <form method="post" action="/productos/{{ p.id }}/activo" class="no-imprimir">
           <button class="interruptor {{ 'si' if p.activo else 'no' }}" type="submit"
