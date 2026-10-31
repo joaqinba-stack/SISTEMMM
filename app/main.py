@@ -622,7 +622,8 @@ def compras_excel(request: Request):
 def compras_panel(request: Request):
     filtros = _filtros_compras(request)
     with db.conexion() as con:
-        filas = inv.listar_compras(con, **filtros)
+        # los ajustes de stock no son plata gastada: no cuentan en el panel
+        filas = [f for f in inv.listar_compras(con, **filtros) if f["origen"] != "ajuste"]
         productos = inv.listar_productos(con)
         proveedores = inv.proveedores(con)
     por_proveedor: dict[str, float] = {}

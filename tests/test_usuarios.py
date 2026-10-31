@@ -278,6 +278,8 @@ def test_el_admin_ajusta_el_stock_desde_la_ficha():
     r = ana.post("/productos/1/stock", data={"cantidad": "8", "motivo": "Conteo de inventario"})
     assert "ahora hay 8 en stock" in r.text
     assert "📦 Ajuste de stock" in ana.get("/compras").text
+    r = ana.get("/compras/panel")  # el ajuste (+5 a ₲ 1.000) no es plata gastada
+    assert "₲ 5.000" in r.text and "₲ 10.000" not in r.text
     r = ana.post("/productos/1/stock", data={"cantidad": "8", "motivo": "Conteo"})
     assert "no hay nada que cambiar" in r.text
     r = ana.post("/productos/1/stock", data={"cantidad": "4", "motivo": ""})

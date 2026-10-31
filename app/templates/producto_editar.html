@@ -63,7 +63,7 @@
 </form>
 
 {% if usuario.rol == 'admin' %}
-<section class="tarjeta" id="stock">
+<section class="tarjeta ajustar-stock" id="stock">
   <h2>📦 Ajustar stock</h2>
   <p class="ayuda">Ahora el sistema dice que hay <b>{{ p.stock|cant }}</b>. Si contaste y hay otra cantidad
     (se rompió, se perdió, se usó, sobraron), escribí cuántas hay <b>en realidad</b> y el motivo.
@@ -88,7 +88,7 @@
   <h3>Últimos ajustes</h3>
   <div class="tabla-envoltura">
   <table class="tabla">
-    <thead><tr><th>Fecha</th><th class="num">Antes</th><th class="num">Después</th><th class="num">Cambio</th><th>Motivo</th><th>Quién</th></tr></thead>
+    <thead><tr><th>Fecha</th><th class="num">Antes</th><th class="num">Después</th><th class="num">Cambio</th><th>Motivo</th></tr></thead>
     <tbody>
     {% for a in ajustes %}
       {% set cambio = a.stock_despues - a.stock_antes %}
@@ -98,7 +98,6 @@
         <td data-titulo="Después" class="num"><b>{{ a.stock_despues|cant }}</b></td>
         <td data-titulo="Cambio" class="num">{{ '+' if cambio > 0 }}{{ cambio|cant }}</td>
         <td data-titulo="Motivo">{{ a.motivo }}</td>
-        <td data-titulo="Quién">{{ a.usuario or '—' }}</td>
       </tr>
     {% endfor %}
     </tbody>
