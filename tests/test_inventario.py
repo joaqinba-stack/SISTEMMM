@@ -187,3 +187,60 @@ def test_parecido_sin_importar_proveedor_ni_orden(con):
     p = inv.crear_producto(con, {"nombre_interno": "Pistola de calor 300W", "proveedor": "Pacific"})
     otro_prov = inv.proveedor_id(con, "Super K")
     assert inv.buscar_coincidencia(con, "PISTOLA DE CALOR 300W", otro_prov)["id"] == p["id"]
+
+
+def test_ajustar_stock_baja_de_las_compras_mas_viejas(con):
+    p = inv.crear_producto(con, {"nombre_interno": "Molde", "cantidad": 3, "costo_total": 300,
+                                 "fecha": "2026-01-01"})
+    inv.registrar_compra(con, "2026-02-01", "F2", "", [{"producto_id": p["id"], "cantidad": 4,
+                                                        "costo_total": 800}])
+    admin = {"id": None, "nombre": "Ana"}
+    r = inv.ajustar_stock(con, p["id"], "5", "Se rompieron 2", admin)
+    assert (r["antes"], r["despues"], r["diferencia"]) == (7, 5, -2)
+    viejo, nuevo = sorted(inv.listar_compras(con), key=lambda c: c["fecha"])
+    assert viejo["cantidad_restante"] == 1 and nuevo["cantidad_restante"] == 4
+    # la compra de la que salieron unidades ya no se puede cambiar ni borrar
+    with pytest.raises(inv.ErrorNegocio, match="ya se vendieron o se descontaron"):
+        inv.editar_lote(con, viejo["lote_id"], {"cantidad": "9", "costo_total": "300",
+                                                "fecha": "2026-01-01"})
+    with pytest.raises(inv.ErrorNegocio, match="ajuste de stock"):
+        inv.borrar_lote(con, viejo["lote_id"])
+    # la venta siguiente sale de lo que quedó, al costo de cada compra
+    inv.registrar_venta(con, [{"producto_id": p["id"], "cantidad": 2}])
+    assert inv.stock(con, p["id"]) == 3
+    assert con.execute("SELECT costo_fifo FROM venta_items").fetchone()[0] == 100 + 200
+    ajuste = inv.listar_ajustes(con, p["id"])[0]
+    assert (ajuste["stock_antes"], ajuste["stock_despues"], ajuste["motivo"], ajuste["usuario"]) == (
+        7, 5, "Se rompieron 2", "Ana")
+
+
+def test_ajustar_stock_sube_y_hasta_cero(con):
+    p = inv.crear_producto(con, {"nombre_interno": "Vela", "cantidad": 2, "costo_total": 1000})
+    r = inv.ajustar_stock(con, p["id"], "6", "Conteo de inventario")
+    assert (r["antes"], r["despues"]) == (2, 6)
+    entrada = [c for c in inv.listar_compras(con) if c["origen"] == "ajuste"][0]
+    assert entrada["cantidad"] == 4 and entrada["costo_unitario"] == 500  # al costo de la última compra
+    assert inv.ajustar_stock(con, p["id"], "0", "Se perdió todo")["despues"] == 0
+    assert len(inv.listar_ajustes(con, p["id"])) == 2
+    # sin compras ni costo también se puede (por ejemplo un producto cargado sin compra)
+    q = inv.crear_producto(con, {"nombre_interno": "Sin compra"})
+    assert inv.ajustar_stock(con, q["id"], "3", "Conteo")["despues"] == 3
+
+
+def test_ajustar_stock_rechaza_datos_malos(con):
+    p = inv.crear_producto(con, {"nombre_interno": "X", "cantidad": 2, "costo_total": 100})
+    for cantidad, motivo, error in (("", "Conteo", "cuántas"), ("-1", "Conteo", "menor a cero"),
+                                    ("5", "  ", "motivo"), ("2", "Conteo", "ya es 2")):
+        with pytest.raises(inv.ErrorNegocio, match=error):
+            inv.ajustar_stock(con, p["id"], cantidad, motivo)
+    with pytest.raises(inv.ErrorNegocio, match="no existe"):
+        inv.ajustar_stock(con, 999, "1", "Conteo")
+    assert inv.stock(con, p["id"]) == 2 and inv.listar_ajustes(con, p["id"]) == []
+
+
+def test_unir_productos_lleva_los_ajustes(con):
+    bueno = inv.crear_producto(con, {"nombre_interno": "Bueno", "cantidad": 1, "costo_total": 10})
+    malo = inv.crear_producto(con, {"nombre_interno": "Malo", "cantidad": 3, "costo_total": 30})
+    inv.ajustar_stock(con, malo["id"], "2", "Conteo")
+    assert inv.unir_productos(con, malo["id"], bueno["id"])["stock"] == 3
+    assert len(inv.listar_ajustes(con, bueno["id"])) == 1

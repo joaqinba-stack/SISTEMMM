@@ -361,6 +361,7 @@ def unir_productos(con: sqlite3.Connection, origen_id: int, destino_id: int) -> 
     con.execute("UPDATE lotes SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
     con.execute("UPDATE venta_items SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
     con.execute("UPDATE alias_productos SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
+    con.execute("UPDATE ajustes_stock SET producto_id = ? WHERE producto_id = ?", (destino_id, origen_id))
     if origen["imagen"] and not destino["imagen"]:
         con.execute("UPDATE productos SET imagen = ? WHERE id = ?", (origen["imagen"], destino_id))
     for texto in {origen["nombre_proveedor"], origen["nombre_interno"]}:
@@ -438,10 +439,10 @@ def editar_lote(con, lote_id: int, datos: dict) -> None:
     costo_total = leer_numero(datos.get("costo_total"), lote["costo_total"])
     if cantidad <= 0:
         raise ErrorNegocio("La cantidad tiene que ser mayor a cero.")
-    vendido = round(lote["cantidad"] - lote["cantidad_restante"], 6)
-    if vendido > 0 and (cantidad != lote["cantidad"] or costo_total != lote["costo_total"]):
+    salieron = round(lote["cantidad"] - lote["cantidad_restante"], 6)  # por ventas o ajustes
+    if salieron > 0 and (cantidad != lote["cantidad"] or costo_total != lote["costo_total"]):
         raise ErrorNegocio(
-            f"De esta compra ya se vendieron {cantidad_txt(vendido)} unidades, "
+            f"De esta compra ya se vendieron o se descontaron {cantidad_txt(salieron)} unidades, "
             "por eso no se puede cambiar la cantidad ni el costo. "
             "Sí se pueden cambiar la fecha, la factura y el proveedor."
         )
@@ -458,9 +459,75 @@ def borrar_lote(con, lote_id: int) -> None:
         raise ErrorNegocio("Esa compra no existe.")
     if con.execute("SELECT 1 FROM consumos WHERE lote_id = ?", (lote_id,)).fetchone():
         raise ErrorNegocio("No se puede borrar: ya hay ventas que salieron de esta compra.")
+    if con.execute("SELECT 1 FROM ajuste_lotes WHERE lote_id = ?", (lote_id,)).fetchone():
+        raise ErrorNegocio("No se puede borrar: un ajuste de stock ya descontó unidades de esta compra.")
     con.execute("DELETE FROM lotes WHERE id = ?", (lote_id,))
     if not con.execute("SELECT 1 FROM lotes WHERE compra_id = ?", (lote["compra_id"],)).fetchone():
         con.execute("DELETE FROM compras WHERE id = ?", (lote["compra_id"],))
+
+
+# ---------------------------------------------------------------- ajustes de stock
+
+def ajustar_stock(con, producto_id: int, cantidad_real, motivo: str, usuario=None) -> dict:
+    """El administrador escribe cuántas unidades hay en realidad y el stock queda en ese número.
+    Si hay más, la diferencia entra como una compra «ajuste» al costo de la última compra.
+    Si hay menos, se descuenta de las compras más viejas primero (como una venta, sin cobrar)."""
+    producto = con.execute("SELECT * FROM productos WHERE id = ?", (producto_id,)).fetchone()
+    if not producto:
+        raise ErrorNegocio("Ese producto no existe.")
+    real = leer_numero(cantidad_real)
+    if real is None:
+        raise ErrorNegocio("Escribí cuántas unidades hay en realidad.")
+    if real < 0:
+        raise ErrorNegocio("La cantidad no puede ser menor a cero.")
+    motivo = re.sub(r"\s+", " ", motivo or "").strip()[:200]
+    if not motivo:
+        raise ErrorNegocio("Escribí el motivo del ajuste (por ejemplo «conteo» o «se rompió»).")
+    real = round(real, 6)
+    antes = stock(con, producto_id)
+    diferencia = round(real - antes, 6)
+    if abs(diferencia) < 1e-9:
+        raise ErrorNegocio(f"El stock ya es {cantidad_txt(antes)}: no hay nada que cambiar.")
+
+    compra_id = None
+    if diferencia > 0:
+        costo = costo_referencia(con, producto_id)
+        compra_id = registrar_compra(con, None, "", "", [{
+            "producto_id": producto_id, "cantidad": diferencia, "costo_total": costo * diferencia,
+        }], origen="ajuste")
+    ajuste_id = con.execute(
+        """INSERT INTO ajustes_stock (producto_id, stock_antes, stock_despues, motivo, compra_id,
+               usuario_id, usuario) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (producto_id, antes, real, motivo, compra_id,
+         usuario["id"] if usuario else None, usuario["nombre"] if usuario else ""),
+    ).lastrowid
+    if diferencia < 0:
+        falta = -diferencia
+        lotes = con.execute(
+            """SELECT id, cantidad_restante FROM lotes
+               WHERE producto_id = ? AND cantidad_restante > 0 ORDER BY fecha, id""",
+            (producto_id,),
+        ).fetchall()
+        for lote in lotes:
+            if falta <= 1e-9:
+                break
+            toma = min(falta, lote["cantidad_restante"])
+            con.execute(
+                "UPDATE lotes SET cantidad_restante = ROUND(cantidad_restante - ?, 6) WHERE id = ?",
+                (toma, lote["id"]),
+            )
+            con.execute("INSERT INTO ajuste_lotes (ajuste_id, lote_id, cantidad) VALUES (?, ?, ?)",
+                        (ajuste_id, lote["id"], toma))
+            falta = round(falta - toma, 6)
+    return {"producto": producto, "antes": antes, "despues": stock(con, producto_id),
+            "diferencia": diferencia}
+
+
+def listar_ajustes(con, producto_id: int, limite: int = 20):
+    return con.execute(
+        """SELECT * FROM ajustes_stock WHERE producto_id = ? ORDER BY id DESC LIMIT ?""",
+        (producto_id, limite),
+    ).fetchall()
 
 
 # ---------------------------------------------------------------- ventas (FIFO)

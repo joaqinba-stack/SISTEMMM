@@ -28,7 +28,7 @@
     <tr>
       <td data-titulo="Fecha">{{ c.fecha|fecha }}</td>
       <td data-titulo="Código producto" class="mono">{{ c.codigo }}</td>
-      <td data-titulo="N° de factura" class="mono">{{ c.nro_factura or '—' }}</td>
+      {% if c.origen == 'ajuste' %}<td data-titulo="N° de factura">📦 Ajuste de stock</td>{% else %}<td data-titulo="N° de factura" class="mono">{{ c.nro_factura or '—' }}</td>{% endif %}
       <td data-titulo="Proveedor">{{ c.proveedor }}</td>
       <td data-titulo="Producto"><b>{{ c.nombre_interno }}</b>{% if c.origen == 'telegram' %} <span class="etiqueta" title="Cargada por Telegram">📱</span>{% endif %}</td>
       <td data-titulo="Cantidad" class="num">{{ c.cantidad|cant }}</td>

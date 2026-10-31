@@ -296,7 +296,7 @@ input[readonly] { background: #f0eee9; }
 
 /* ---- Unir productos ---- */
 .unir { border: 2px dashed var(--borde); }
-.unir h2 { margin-top: 4px; }
+.unir h2, .ajustar-stock h2 { margin-top: 4px; }
 
 /* ---- Etiquetas: tamaño y vista previa ---- */
 .tamanos-zona { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; align-items: center; }

@@ -146,7 +146,30 @@ CREATE TABLE IF NOT EXISTS actividad (
     detalle TEXT NOT NULL DEFAULT ''
 );
 
+-- Correcciones de stock del administrador (conteo, roturas, pérdidas…): el stock queda en
+-- el número que se contó. Si sobran unidades entran como una compra «ajuste» (compra_id).
+CREATE TABLE IF NOT EXISTS ajustes_stock (
+    id INTEGER PRIMARY KEY,
+    producto_id INTEGER NOT NULL REFERENCES productos(id),
+    fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    stock_antes REAL NOT NULL,
+    stock_despues REAL NOT NULL,
+    motivo TEXT NOT NULL DEFAULT '',
+    compra_id INTEGER REFERENCES compras(id) ON DELETE SET NULL,
+    usuario_id INTEGER REFERENCES usuarios(id),
+    usuario TEXT NOT NULL DEFAULT ''    -- el nombre en ese momento
+);
+
+-- Cuando un ajuste baja el stock: de qué compras (lotes) salieron las unidades.
+CREATE TABLE IF NOT EXISTS ajuste_lotes (
+    id INTEGER PRIMARY KEY,
+    ajuste_id INTEGER NOT NULL REFERENCES ajustes_stock(id) ON DELETE CASCADE,
+    lote_id INTEGER NOT NULL REFERENCES lotes(id) ON DELETE CASCADE,
+    cantidad REAL NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_actividad_fecha ON actividad(fecha, id);
+CREATE INDEX IF NOT EXISTS ix_ajustes_stock_producto ON ajustes_stock(producto_id, id);
 CREATE INDEX IF NOT EXISTS ix_lotes_producto ON lotes(producto_id, fecha, id);
 CREATE INDEX IF NOT EXISTS ix_lotes_compra ON lotes(compra_id);
 """

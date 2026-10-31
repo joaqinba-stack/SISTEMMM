@@ -215,6 +215,7 @@ def test_solo_el_admin_cambia_precios_costos_y_cantidades():
     for ruta, datos in (("/productos/1/precio", {"precio_venta": "9.000", "origen": "precio"}),
                         ("/productos/1/margen", {"margen_pct": "90"}),
                         ("/productos/1/unir", {"destino_id": "1"}),
+                        ("/productos/1/stock", {"cantidad": "99", "motivo": "Conteo"}),
                         ("/compras/1/editar", {"cantidad": "1", "costo_total": "1"}),
                         ("/compras/1/borrar", {})):
         assert "Solo el administrador puede cambiar precios" in beto.post(ruta, data=datos).text, ruta
@@ -228,6 +229,7 @@ def test_solo_el_admin_cambia_precios_costos_y_cantidades():
     assert "/compras/1/editar" not in beto.get("/compras").text
     r = beto.get("/productos/1/editar")
     assert 'name="precio_venta"' not in r.text and 'id="buscador-unir"' not in r.text
+    assert 'action="/productos/1/stock"' not in r.text
     assert "los cambia el administrador" in r.text
 
     # puede editar el resto de la ficha, pero el precio que mande no se toma
@@ -262,3 +264,28 @@ def test_solo_el_admin_cambia_precios_costos_y_cantidades():
     r = ana.post("/compras/1/editar", data={"fecha": "2026-06-05", "nro_factura": "", "proveedor": "Pacific SA",
                                             "cantidad": "5", "costo_total": "5000"})
     assert "Solo el administrador" not in r.text and "Compra corregida" in r.text
+
+
+def test_el_admin_ajusta_el_stock_desde_la_ficha():
+    ana = TestClient(app)
+    crear(ana, "ana")
+    producto(ana)  # 5 unidades
+    r = ana.get("/productos/1/editar")
+    assert 'action="/productos/1/stock"' in r.text and "Ajustar stock" in r.text
+
+    r = ana.post("/productos/1/stock", data={"cantidad": "3", "motivo": "Se rompieron dos"})
+    assert "ahora hay 3 en stock" in r.text and "Se rompieron dos" in r.text  # en «Últimos ajustes»
+    r = ana.post("/productos/1/stock", data={"cantidad": "8", "motivo": "Conteo de inventario"})
+    assert "ahora hay 8 en stock" in r.text
+    assert "📦 Ajuste de stock" in ana.get("/compras").text
+    r = ana.get("/compras/panel")  # el ajuste (+5 a ₲ 1.000) no es plata gastada
+    assert "₲ 5.000" in r.text and "₲ 10.000" not in r.text
+    r = ana.post("/productos/1/stock", data={"cantidad": "8", "motivo": "Conteo"})
+    assert "no hay nada que cambiar" in r.text
+    r = ana.post("/productos/1/stock", data={"cantidad": "4", "motivo": ""})
+    assert "motivo" in r.text
+    with db.conexion() as con:
+        assert inv.stock(con, 1) == 8
+    r = ana.get("/actividad")
+    assert "Ajustó el stock" in r.text and "de 5 a 3 (-2). Motivo: Se rompieron dos" in r.text
+    assert "de 3 a 8 (+5)" in r.text

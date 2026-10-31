@@ -59,9 +59,9 @@ plantillas.env.filters["fecha"] = inv.fecha_txt
 
 SIN_SESION = ("/static", "/login", "/cuenta/nueva", "/cuenta/recuperar")
 SOLO_ADMIN = ("/usuarios", "/actividad")
-# Precios, costos y cantidades: solo el administrador. El stock solo baja con ventas; corregir o
-# borrar una compra o unir productos (que mueve stock) también es cosa del administrador.
-SOLO_ADMIN_RUTAS = re.compile(r"^/(productos/\d+/(precio|margen|unir)|compras/\d+/(editar|borrar))/?$")
+# Precios, costos y cantidades: solo el administrador. El stock baja con ventas; ajustarlo a mano,
+# corregir o borrar una compra o unir productos (que mueve stock) es cosa del administrador.
+SOLO_ADMIN_RUTAS = re.compile(r"^/(productos/\d+/(precio|margen|unir|stock)|compras/\d+/(editar|borrar))/?$")
 
 
 @app.middleware("http")
@@ -515,7 +515,28 @@ def producto_editar(request: Request, producto_id: int):
         otros = [x for x in inv.listar_productos(con) if x["id"] != producto_id]
         return pagina(request, "producto_editar.html", p=producto,
                       categorias=inv.categorias(con), proveedores=inv.proveedores(con),
-                      productos_json=opciones_productos(otros))
+                      productos_json=opciones_productos(otros),
+                      ajustes=inv.listar_ajustes(con, producto_id) if es_admin(request) else [])
+
+
+@app.post("/productos/{producto_id}/stock")
+def producto_ajustar_stock(request: Request, producto_id: int,
+                           cantidad: str = Form(""), motivo: str = Form("")):
+    """El administrador corrige el stock: escribe cuántas unidades hay y por qué."""
+    try:
+        with db.conexion() as con:
+            r = inv.ajustar_stock(con, producto_id, cantidad, motivo, request.state.usuario)
+    except inv.ErrorNegocio as exc:
+        avisar(request, str(exc), "error")
+        return ir(f"/productos/{producto_id}/editar#stock")
+    p, motivo = r["producto"], " ".join(motivo.split())
+    cambio = f"+{inv.cantidad_txt(r['diferencia'])}" if r["diferencia"] > 0 else inv.cantidad_txt(r["diferencia"])
+    anotar(request, "Ajustó el stock",
+           f"{p['codigo']} {p['nombre_interno']}: de {inv.cantidad_txt(r['antes'])} "
+           f"a {inv.cantidad_txt(r['despues'])} ({cambio}). Motivo: {motivo}")
+    avisar(request, f"✅ {p['nombre_interno']}: ahora hay {inv.cantidad_txt(r['despues'])} en stock "
+                    f"(antes {inv.cantidad_txt(r['antes'])}).")
+    return ir(f"/productos/{producto_id}/editar#stock")
 
 
 @app.post("/productos/{producto_id}/editar")
@@ -601,7 +622,8 @@ def compras_excel(request: Request):
 def compras_panel(request: Request):
     filtros = _filtros_compras(request)
     with db.conexion() as con:
-        filas = inv.listar_compras(con, **filtros)
+        # los ajustes de stock no son plata gastada: no cuentan en el panel
+        filas = [f for f in inv.listar_compras(con, **filtros) if f["origen"] != "ajuste"]
         productos = inv.listar_productos(con)
         proveedores = inv.proveedores(con)
     por_proveedor: dict[str, float] = {}
