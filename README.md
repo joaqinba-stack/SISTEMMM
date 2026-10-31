@@ -118,7 +118,7 @@ Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla 
 - **El stock baja con ventas.** Fuera de eso, solo el administrador lo cambia, y todo queda en el
   registro de actividad:
   - **Cambiar el stock**: directo en la columna *En stock* de **📦 Productos y stock** (se escribe el
-    número y se toca ✓), o en **Editar → 📦 Ajustar stock**, donde además se puede anotar el motivo
+    número y se toca ✓), o en **Editar**, en el campo *En stock* (se guarda con 💾 Guardar), donde además se puede anotar el motivo
     (conteo, se rompió, se perdió…; si no se escribe queda «Corrección manual»). Si hay menos, se descuentan de las compras
     más viejas primero; si hay más, la diferencia entra como «📦 Ajuste de stock» en Compras, al costo
     de la última compra. La ficha muestra los últimos ajustes.
