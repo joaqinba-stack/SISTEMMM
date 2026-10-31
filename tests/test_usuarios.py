@@ -231,7 +231,7 @@ def test_solo_el_admin_cambia_precios_costos_y_cantidades():
     r = beto.get("/productos/1/editar")
     assert 'name="precio_venta"' not in r.text and 'id="buscador-unir"' not in r.text
     assert 'action="/productos/1/stock"' not in r.text
-    assert "los cambia el administrador" in r.text
+    assert "los cambia el administrador" in r.text and 'name="stock"' not in r.text
 
     # puede editar el resto de la ficha, pero el precio que mande no se toma
     beto.post("/productos/1/editar", data={"nombre_interno": "Molde A grande", "categoria_id": "1",
@@ -272,10 +272,11 @@ def test_el_admin_ajusta_el_stock_desde_la_ficha():
     crear(ana, "ana")
     producto(ana)  # 5 unidades
     r = ana.get("/productos/1/editar")
-    assert 'action="/productos/1/stock"' in r.text and "Ajustar stock" in r.text
+    assert 'name="stock" inputmode="decimal" value="5"' in r.text and 'name="motivo_stock"' in r.text
 
     r = ana.post("/productos/1/stock", data={"cantidad": "3", "motivo": "Se rompieron dos"})
-    assert "ahora hay 3 en stock" in r.text and "Se rompieron dos" in r.text  # en «Últimos ajustes»
+    assert "ahora hay 3 en stock" in r.text
+    assert "Últimos cambios de stock" in r.text and "Se rompieron dos" in r.text  # en la ficha
     r = ana.post("/productos/1/stock", data={"cantidad": "8", "motivo": "Conteo de inventario"})
     assert "ahora hay 8 en stock" in r.text
     assert "📦 Ajuste de stock" in ana.get("/compras").text
@@ -296,3 +297,36 @@ def test_el_admin_ajusta_el_stock_desde_la_ficha():
     r = ana.get("/actividad")
     assert "Ajustó el stock" in r.text and "de 5 a 3 (-2). Motivo: Se rompieron dos" in r.text
     assert "de 3 a 8 (+5)" in r.text and "de 8 a 6 (-2). Motivo: Corrección manual" in r.text
+
+
+def test_el_admin_cambia_el_stock_al_editar_el_producto():
+    ana, beto = TestClient(app), TestClient(app)
+    crear(ana, "ana")
+    alta(ana, "beto")
+    primer_ingreso(beto, "beto")
+    producto(ana)  # 5 unidades
+    ficha = {"nombre_interno": "Molde A", "categoria_id": "1", "margen_pct": "40",
+             "precio_venta": "3.000", "activo": "1"}
+
+    def stock():
+        with db.conexion() as con:
+            return inv.stock(con, 1)
+
+    r = ana.post("/productos/1/editar", data={**ficha, "stock": "9", "stock_antes": "5",
+                                              "motivo_stock": "Conteo de inventario"})
+    assert "Ahora hay 9 en stock (antes 5)" in r.text and stock() == 9
+    # sin tocar el número no se ajusta nada, aunque el stock haya cambiado mientras tanto
+    beto.post("/vender", data={"producto_id": ["1"], "cantidad": ["2"], "medio_pago": "Efectivo"})
+    r = ana.post("/productos/1/editar", data={**ficha, "stock": "9", "stock_antes": "9"})
+    assert "Ahora hay" not in r.text and stock() == 7
+    # un número malo no guarda nada
+    r = ana.post("/productos/1/editar", data={**ficha, "nombre_interno": "Otro", "stock": "-3", "stock_antes": "7"})
+    assert "menor a cero" in r.text and stock() == 7
+    with db.conexion() as con:
+        assert inv.obtener_producto(con, 1)["nombre_interno"] == "Molde A"
+    # el usuario común no ve el campo y lo que mande no se toma
+    assert 'name="stock"' not in beto.get("/productos/1/editar").text
+    beto.post("/productos/1/editar", data={**ficha, "stock": "99", "stock_antes": "7"})
+    assert stock() == 7
+    r = ana.get("/actividad")
+    assert "de 5 a 9 (+4). Motivo: Conteo de inventario" in r.text

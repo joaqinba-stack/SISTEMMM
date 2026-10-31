@@ -519,6 +519,14 @@ def producto_editar(request: Request, producto_id: int):
                       ajustes=inv.listar_ajustes(con, producto_id) if es_admin(request) else [])
 
 
+def _anotar_ajuste(request: Request, r: dict, motivo: str) -> None:
+    p, motivo = r["producto"], " ".join((motivo or "").split()) or "Corrección manual"
+    cambio = f"+{inv.cantidad_txt(r['diferencia'])}" if r["diferencia"] > 0 else inv.cantidad_txt(r["diferencia"])
+    anotar(request, "Ajustó el stock",
+           f"{p['codigo']} {p['nombre_interno']}: de {inv.cantidad_txt(r['antes'])} "
+           f"a {inv.cantidad_txt(r['despues'])} ({cambio}). Motivo: {motivo}")
+
+
 @app.post("/productos/{producto_id}/stock")
 def producto_ajustar_stock(request: Request, producto_id: int, cantidad: str = Form(""),
                            motivo: str = Form(""), volver: str = Form("")):
@@ -531,11 +539,8 @@ def producto_ajustar_stock(request: Request, producto_id: int, cantidad: str = F
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(destino)
-    p, motivo = r["producto"], " ".join(motivo.split()) or "Corrección manual"
-    cambio = f"+{inv.cantidad_txt(r['diferencia'])}" if r["diferencia"] > 0 else inv.cantidad_txt(r["diferencia"])
-    anotar(request, "Ajustó el stock",
-           f"{p['codigo']} {p['nombre_interno']}: de {inv.cantidad_txt(r['antes'])} "
-           f"a {inv.cantidad_txt(r['despues'])} ({cambio}). Motivo: {motivo}")
+    p = r["producto"]
+    _anotar_ajuste(request, r, motivo)
     avisar(request, f"✅ {p['nombre_interno']}: ahora hay {inv.cantidad_txt(r['despues'])} en stock "
                     f"(antes {inv.cantidad_txt(r['antes'])}).")
     return ir(destino)
@@ -547,9 +552,11 @@ async def producto_editar_guardar(
     nombre_interno: str = Form(""), nombre_proveedor: str = Form(""), marca: str = Form(""),
     categoria_id: int = Form(...), margen_pct: str = Form(""),
     precio_venta: str = Form(""), activo: str = Form(""),
+    stock: str = Form(""), stock_antes: str = Form(""), motivo_stock: str = Form(""),
     imagen: UploadFile | None = File(None),
 ):
     ruta_imagen = await guardar_imagen(imagen, "productos")
+    ajuste = None
     admin = es_admin(request)
     datos = {"nombre_interno": nombre_interno, "nombre_proveedor": nombre_proveedor,
              "marca": marca, "categoria_id": categoria_id,
@@ -559,11 +566,21 @@ async def producto_editar_guardar(
     try:
         with db.conexion() as con:
             inv.actualizar_producto(con, producto_id, datos, quitar_revisar=admin)
+            # el stock solo cambia si el administrador tocó el número (no si cambió solo mientras tanto)
+            nuevo = inv.leer_numero(stock)
+            if (admin and nuevo is not None and nuevo != inv.leer_numero(stock_antes)
+                    and round(nuevo, 6) != inv.stock(con, producto_id)):
+                ajuste = inv.ajustar_stock(con, producto_id, stock, motivo_stock, request.state.usuario)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
         return ir(f"/productos/{producto_id}/editar")
     anotar(request, "Editó un producto", f"{nombre_interno.strip()} (n.º {producto_id})")
-    avisar(request, "✅ Cambios guardados.")
+    if ajuste:
+        _anotar_ajuste(request, ajuste, motivo_stock)
+        avisar(request, f"✅ Cambios guardados. Ahora hay {inv.cantidad_txt(ajuste['despues'])} en stock "
+                        f"(antes {inv.cantidad_txt(ajuste['antes'])}).")
+    else:
+        avisar(request, "✅ Cambios guardados.")
     return ir(f"/productos#p{producto_id}")
 
 
