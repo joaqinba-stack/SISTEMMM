@@ -465,7 +465,13 @@
           celdas.forEach(function (celda) {
             var valor = datos.stock[celda.dataset.stockId] || 0;
             var texto = cant(valor);
-            if (celda.textContent.trim() !== texto) {
+            if (celda.tagName === "INPUT") {  // el administrador lo puede escribir: no pisar lo que escribe
+              if (document.activeElement !== celda && celda.value === celda.defaultValue && celda.value !== texto) {
+                celda.value = celda.defaultValue = texto;
+                celda.classList.add("cambio");
+                setTimeout(function () { celda.classList.remove("cambio"); }, 2500);
+              }
+            } else if (celda.textContent.trim() !== texto) {
               celda.textContent = texto;
               celda.classList.add("cambio");
               setTimeout(function () { celda.classList.remove("cambio"); }, 2500);

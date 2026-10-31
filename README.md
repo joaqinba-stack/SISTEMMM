@@ -117,8 +117,9 @@ Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla 
     corregir o borrar compras, unir productos repetidos, crear y bloquear cuentas y ver el registro de actividad.
 - **El stock baja con ventas.** Fuera de eso, solo el administrador lo cambia, y todo queda en el
   registro de actividad:
-  - **📦 Ajustar stock** (en **Editar** de cada producto): se escribe cuántas unidades hay en
-    realidad y el motivo (conteo, se rompió, se perdió…). Si hay menos, se descuentan de las compras
+  - **Cambiar el stock**: directo en la columna *En stock* de **📦 Productos y stock** (se escribe el
+    número y se toca ✓), o en **Editar → 📦 Ajustar stock**, donde además se puede anotar el motivo
+    (conteo, se rompió, se perdió…; si no se escribe queda «Corrección manual»). Si hay menos, se descuentan de las compras
     más viejas primero; si hay más, la diferencia entra como «📦 Ajuste de stock» en Compras, al costo
     de la última compra. La ficha muestra los últimos ajustes.
   - Corregir o borrar una compra mal cargada (mientras no hayan salido unidades de ella).

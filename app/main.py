@@ -520,23 +520,25 @@ def producto_editar(request: Request, producto_id: int):
 
 
 @app.post("/productos/{producto_id}/stock")
-def producto_ajustar_stock(request: Request, producto_id: int,
-                           cantidad: str = Form(""), motivo: str = Form("")):
-    """El administrador corrige el stock: escribe cuántas unidades hay y por qué."""
+def producto_ajustar_stock(request: Request, producto_id: int, cantidad: str = Form(""),
+                           motivo: str = Form(""), volver: str = Form("")):
+    """El administrador corrige el stock: escribe cuántas unidades hay (y si quiere, por qué),
+    desde la ficha del producto o directo en la lista de productos."""
+    destino = f"/productos#p{producto_id}" if volver == "lista" else f"/productos/{producto_id}/editar#stock"
     try:
         with db.conexion() as con:
             r = inv.ajustar_stock(con, producto_id, cantidad, motivo, request.state.usuario)
     except inv.ErrorNegocio as exc:
         avisar(request, str(exc), "error")
-        return ir(f"/productos/{producto_id}/editar#stock")
-    p, motivo = r["producto"], " ".join(motivo.split())
+        return ir(destino)
+    p, motivo = r["producto"], " ".join(motivo.split()) or "Corrección manual"
     cambio = f"+{inv.cantidad_txt(r['diferencia'])}" if r["diferencia"] > 0 else inv.cantidad_txt(r["diferencia"])
     anotar(request, "Ajustó el stock",
            f"{p['codigo']} {p['nombre_interno']}: de {inv.cantidad_txt(r['antes'])} "
            f"a {inv.cantidad_txt(r['despues'])} ({cambio}). Motivo: {motivo}")
     avisar(request, f"✅ {p['nombre_interno']}: ahora hay {inv.cantidad_txt(r['despues'])} en stock "
                     f"(antes {inv.cantidad_txt(r['antes'])}).")
-    return ir(f"/productos/{producto_id}/editar#stock")
+    return ir(destino)
 
 
 @app.post("/productos/{producto_id}/editar")

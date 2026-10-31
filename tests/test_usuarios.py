@@ -226,6 +226,7 @@ def test_solo_el_admin_cambia_precios_costos_y_cantidades():
     # en pantalla: precios como texto, sin editar compras ni unir productos
     r = beto.get("/productos")
     assert 'action="/productos/1/precio"' not in r.text and "₲ 3.000" in r.text
+    assert 'action="/productos/1/stock"' not in r.text and 'data-stock-id="1">5<' in r.text
     assert "/compras/1/editar" not in beto.get("/compras").text
     r = beto.get("/productos/1/editar")
     assert 'name="precio_venta"' not in r.text and 'id="buscador-unir"' not in r.text
@@ -282,10 +283,16 @@ def test_el_admin_ajusta_el_stock_desde_la_ficha():
     assert "₲ 5.000" in r.text and "₲ 10.000" not in r.text
     r = ana.post("/productos/1/stock", data={"cantidad": "8", "motivo": "Conteo"})
     assert "no hay nada que cambiar" in r.text
-    r = ana.post("/productos/1/stock", data={"cantidad": "4", "motivo": ""})
-    assert "motivo" in r.text
     with db.conexion() as con:
         assert inv.stock(con, 1) == 8
+
+    # directo en la lista de productos, sin motivo, y vuelve a la lista
+    r = ana.get("/productos")
+    assert 'action="/productos/1/stock"' in r.text and 'name="cantidad"' in r.text
+    r = ana.post("/productos/1/stock", data={"cantidad": "6", "volver": "lista"})
+    assert r.url.path == "/productos" and "ahora hay 6 en stock" in r.text
+    with db.conexion() as con:
+        assert inv.stock(con, 1) == 6
     r = ana.get("/actividad")
     assert "Ajustó el stock" in r.text and "de 5 a 3 (-2). Motivo: Se rompieron dos" in r.text
-    assert "de 3 a 8 (+5)" in r.text
+    assert "de 3 a 8 (+5)" in r.text and "de 8 a 6 (-2). Motivo: Corrección manual" in r.text

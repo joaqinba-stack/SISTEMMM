@@ -480,9 +480,7 @@ def ajustar_stock(con, producto_id: int, cantidad_real, motivo: str, usuario=Non
         raise ErrorNegocio("Escribí cuántas unidades hay en realidad.")
     if real < 0:
         raise ErrorNegocio("La cantidad no puede ser menor a cero.")
-    motivo = re.sub(r"\s+", " ", motivo or "").strip()[:200]
-    if not motivo:
-        raise ErrorNegocio("Escribí el motivo del ajuste (por ejemplo «conteo» o «se rompió»).")
+    motivo = re.sub(r"\s+", " ", motivo or "").strip()[:200] or "Corrección manual"
     real = round(real, 6)
     antes = stock(con, producto_id)
     diferencia = round(real - antes, 6)
