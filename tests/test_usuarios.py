@@ -287,9 +287,12 @@ def test_el_admin_ajusta_el_stock_desde_la_ficha():
     with db.conexion() as con:
         assert inv.stock(con, 1) == 8
 
-    # directo en la lista de productos, sin motivo, y vuelve a la lista
+    # la lista es solo para mirar, también para el administrador: se cambia desde Editar
     r = ana.get("/productos")
-    assert 'action="/productos/1/stock"' in r.text and 'name="cantidad"' in r.text
+    for campo in ('action="/productos/1/stock"', 'action="/productos/1/precio"', 'name="cantidad"',
+                  'name="precio_venta"', 'name="margen_pct"'):
+        assert campo not in r.text, campo
+    assert 'data-stock-id="1">8<' in r.text and "₲ 3.000" in r.text and 'action="/productos/1/activo"' in r.text
     r = ana.post("/productos/1/stock", data={"cantidad": "6", "volver": "lista"})
     assert r.url.path == "/productos" and "ahora hay 6 en stock" in r.text
     with db.conexion() as con:

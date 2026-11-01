@@ -240,9 +240,6 @@ input[readonly] { background: #f0eee9; }
 .lista-facturas { max-height: 460px; overflow-y: auto; }
 .formulario.sin-borde { border: 0; padding: 0; background: transparent; }
 
-/* ---- Productos: % por producto ---- */
-.precio-form, .precio-fila { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
-.campo-con-unidad input { width: 78px; min-height: 42px !important; padding: 6px 8px !important; margin: 0 !important; text-align: right; }
 .precio-nuevo { font-weight: 700; color: var(--verde); }
 
 /* ---- Panel de compras ---- */
@@ -327,18 +324,10 @@ input[readonly] { background: #f0eee9; }
   .acciones-fila { justify-content: flex-start; }
 }
 
-/* ---- Productos: % y precio editables en la misma fila ---- */
-.precio-form { margin: 0; }
-.campo-con-unidad { display: inline-flex; align-items: center; gap: 4px; }
-.campo-con-unidad > span { color: var(--suave); font-weight: 700; }
-.precio-fila .campo-con-unidad input { width: 104px; }
-.stock-form .campo-con-unidad input { width: 72px; font-size: 1rem; }
-
 /* ---- Fotos con protagonismo (Productos y stock, Vender) ---- */
 .tabla.con-fotos { font-size: 0.8rem; }
 .tabla.con-fotos th { font-size: 0.7rem; }
 .tabla.con-fotos .stock { font-size: 1rem; }
-.tabla.con-fotos .campo-con-unidad input { font-size: 0.85rem; }
 .tabla.con-fotos .celda-foto { width: 108px; }
 .tabla.con-fotos .miniatura, .tabla.con-fotos .celda-foto .sin-foto { width: 96px; height: 96px; border-radius: 10px; }
 .celda-foto .sin-foto { font-size: 1.6rem; text-decoration: none; }

@@ -24,7 +24,7 @@ Control de stock simple, pensado para que cualquiera lo pueda usar, con:
 | Pantalla | Qué hace |
 |---|---|
 | 🔔 Notificaciones | Productos con poco stock y productos nuevos para revisar. Queda vacía cuando todo está atendido |
-| 📦 Productos y stock | Código, foto, nombres, dónde fue la última compra, % de ganancia y precio de venta (uno calcula el otro), stock, activo sí/no. ✨ Nuevo producto, Editar (y «Es el mismo que…»), Excel, imprimir códigos de barra |
+| 📦 Productos y stock | Lista para mirar: código, foto, nombres, dónde fue la última compra, % de ganancia, precio de venta y stock. Lo único que se toca ahí es activo sí/no; el %, el precio y el stock se cambian en Editar. ✨ Nuevo producto, Editar (y «Es el mismo que…»), Excel, imprimir códigos de barra |
 | 🧾 Compras | Código, factura, proveedor, producto, precio unitario y total. Editar, Excel y 📊 Panel de compras (con gráfico del costo) |
 | 💰 Vender | Uno o varios productos, cliente (buscar o crear) y forma de pago. Descuenta stock por FIFO |
 
@@ -117,8 +117,8 @@ Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla 
     corregir o borrar compras, unir productos repetidos, crear y bloquear cuentas y ver el registro de actividad.
 - **El stock baja con ventas.** Fuera de eso, solo el administrador lo cambia, y todo queda en el
   registro de actividad:
-  - **Cambiar el stock**: directo en la columna *En stock* de **📦 Productos y stock** (se escribe el
-    número y se toca ✓), o en **Editar**, en el campo *En stock* (se guarda con 💾 Guardar), donde además se puede anotar el motivo
+  - **Cambiar el stock**: en **Editar** de cada producto, en el campo *En stock* (se guarda con
+    💾 Guardar), donde además se puede anotar el motivo
     (conteo, se rompió, se perdió…; si no se escribe queda «Corrección manual»). Si hay menos, se descuentan de las compras
     más viejas primero; si hay más, la diferencia entra como «📦 Ajuste de stock» en Compras, al costo
     de la última compra. La ficha muestra los últimos ajustes.
