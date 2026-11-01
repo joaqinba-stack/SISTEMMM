@@ -382,7 +382,11 @@
 
   document.querySelectorAll("input[data-mostrar-inactivos]").forEach(function (casilla) {
     var tabla = document.querySelector(casilla.dataset.mostrarInactivos);
-    var aplicar = function () { tabla.classList.toggle("ver-inactivos", casilla.checked); };
+    var aviso = document.getElementById("sin-inactivos");
+    var aplicar = function () {  // tildada: solo los inactivos; sin tildar: solo los activos
+      tabla.classList.toggle("ver-inactivos", casilla.checked);
+      if (aviso) aviso.hidden = !(casilla.checked && !tabla.querySelector("tbody tr.inactivo"));
+    };
     casilla.addEventListener("change", aplicar);
     aplicar();
   });
