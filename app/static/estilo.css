@@ -151,7 +151,8 @@ input[readonly] { background: #f0eee9; }
 .tabla th { background: #ece8df; font-size: 0.8rem; text-transform: uppercase; letter-spacing: .02em; position: sticky; top: 0; }
 .tabla .num { text-align: right; white-space: nowrap; }
 .tabla tr.inactivo { display: none; }
-.tabla.ver-inactivos tr.inactivo { display: table-row; opacity: .55; }
+.tabla.ver-inactivos tr.inactivo { display: table-row; }
+.tabla.ver-inactivos tbody tr:not(.inactivo) { display: none; }  /* «Ver solo inactivos» */
 .tabla tr.revisar { background: var(--amarillo-claro); }
 .tabla tr.oculto-busqueda { display: none !important; }
 .tabla tr:target { outline: 3px solid #e2c26b; }
