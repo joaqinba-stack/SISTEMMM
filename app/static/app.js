@@ -369,31 +369,6 @@
     if (!costoBase) recalcular();
   });
 
-  // Tabla de productos: el precio se puede poner por % de ganancia o escribirlo a mano.
-  // Si se escribe el %, se calcula el precio; si se escribe el precio, se calcula el %.
-  document.querySelectorAll("form.precio-form").forEach(function (form) {
-    var costo = parseFloat(form.dataset.costo);
-    var origen = form.querySelector("input[name=origen]");
-    var margen = form.querySelector("input[data-campo=margen]");
-    var precio = document.querySelector('input[form="' + form.id + '"][data-campo=precio]');
-    var boton = document.querySelector('button[form="' + form.id + '"]');
-    var marcar = function (cual) {
-      origen.value = cual;
-      boton.classList.add("principal");
-      boton.title = "Tocá para guardar el cambio";
-    };
-    margen.addEventListener("input", function () {
-      marcar("margen");
-      var m = leerNumero(margen.value);
-      if (costo > 0 && isFinite(m) && m >= 0) precio.value = miles(Math.round(costo * (1 + m / 100)));
-    });
-    precio.addEventListener("input", function () {
-      marcar("precio");
-      var p = leerNumero(precio.value);
-      if (costo > 0 && p > 0) margen.value = String(Math.round((p / costo - 1) * 1000) / 10).replace(".", ",");
-    });
-  });
-
   // ------------------------------------------------------------------ tablas
   document.querySelectorAll("input[data-buscar]").forEach(function (campo) {
     var tabla = document.querySelector(campo.dataset.buscar);
@@ -465,13 +440,7 @@
           celdas.forEach(function (celda) {
             var valor = datos.stock[celda.dataset.stockId] || 0;
             var texto = cant(valor);
-            if (celda.tagName === "INPUT") {  // el administrador lo puede escribir: no pisar lo que escribe
-              if (document.activeElement !== celda && celda.value === celda.defaultValue && celda.value !== texto) {
-                celda.value = celda.defaultValue = texto;
-                celda.classList.add("cambio");
-                setTimeout(function () { celda.classList.remove("cambio"); }, 2500);
-              }
-            } else if (celda.textContent.trim() !== texto) {
+            if (celda.textContent.trim() !== texto) {
               celda.textContent = texto;
               celda.classList.add("cambio");
               setTimeout(function () { celda.classList.remove("cambio"); }, 2500);

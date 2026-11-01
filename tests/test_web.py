@@ -45,7 +45,7 @@ def test_flujo_completo_web():
         # la tabla ya no muestra SKU ni código de barra, y el proveedor es el de la última compra
         tabla = r.text.split('id="tabla-productos"')[1]
         assert "SKU" not in tabla and "/barra/" not in tabla and "Última compra en" in tabla
-        assert 'value="12260"' in r.text  # 8.757 + 40 %
+        assert "₲ 12.260" in tabla  # 8.757 + 40 %
         assert "Imprimir lista" not in r.text and "Cambiar precios por porcentaje" not in r.text
 
         r = c.get("/compras")
@@ -59,21 +59,22 @@ def test_flujo_completo_web():
         r = c.post("/productos/1/editar", data={
             "nombre_interno": "Molde vela corazón P", "categoria_id": "1", "proveedor": "Super K",
             "margen_pct": "50", "precio_venta": "13.136", "activo": "1"})
-        assert "Cambios guardados" in r.text and 'value="13136"' in r.text
+        assert "Cambios guardados" in r.text and "₲ 13.136" in r.text
 
 
 def test_precio_por_porcentaje_o_a_mano_en_la_tabla():
     with cliente() as c:
         nuevo_producto(c, cantidad="1", costo="10000")
         r = c.get("/productos")
-        assert 'name="precio_venta"' in r.text and 'name="margen_pct"' in r.text
+        # la lista es solo para mirar: el precio se cambia en Editar (la ruta sigue funcionando)
+        assert 'name="precio_venta"' not in r.text and 'name="margen_pct"' not in r.text
         # por porcentaje: se calcula el precio
         r = c.post("/productos/1/precio", data={"margen_pct": "100", "precio_venta": "20000", "origen": "margen"})
         assert "precio ₲ 20.000 (ganancia 100%)" in r.text
         # a mano: se calcula el porcentaje
         r = c.post("/productos/1/precio", data={"margen_pct": "100", "precio_venta": "13.500", "origen": "precio"})
         assert "precio ₲ 13.500 (ganancia 35%)" in r.text
-        assert 'value="35"' in r.text and 'value="13500"' in r.text and 'value="13500"' in r.text
+        assert ">35%<" in r.text and "₲ 13.500" in r.text
         # sin decir cuál se tocó: vale el precio si cambió
         r = c.post("/productos/1/precio", data={"margen_pct": "35", "precio_venta": "15.550"})
         assert "precio ₲ 15.550 (ganancia 55,5%)" in r.text
