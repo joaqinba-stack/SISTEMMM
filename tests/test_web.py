@@ -46,7 +46,8 @@ def test_flujo_completo_web():
         tabla = r.text.split('id="tabla-productos"')[1]
         assert "SKU" not in tabla and "/barra/" not in tabla and "Última compra en" in tabla
         assert "₲ 12.260" in tabla  # 8.757 + 40 %
-        assert "Ver solo inactivos" in r.text and 'id="sin-inactivos" hidden' in r.text
+        assert 'data-filtro-activo="#tabla-productos"' in r.text and '<option value="inactivos">' in r.text
+        assert 'class="interruptor si"' in r.text
         assert "Imprimir lista" not in r.text and "Cambiar precios por porcentaje" not in r.text
 
         r = c.get("/compras")

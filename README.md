@@ -24,7 +24,7 @@ Control de stock simple, pensado para que cualquiera lo pueda usar, con:
 | Pantalla | Qué hace |
 |---|---|
 | 🔔 Notificaciones | Productos con poco stock y productos nuevos para revisar. Queda vacía cuando todo está atendido |
-| 📦 Productos y stock | Lista para mirar (muestra los activos; con «Ver solo inactivos», solo los inactivos): código, foto, nombres, dónde fue la última compra, % de ganancia, precio de venta y stock. Lo único que se toca ahí es activo sí/no; el %, el precio y el stock se cambian en Editar. ✨ Nuevo producto, Editar (y «Es el mismo que…»), Excel, imprimir códigos de barra |
+| 📦 Productos y stock | Lista para mirar (muestra activos e inactivos; el filtro «Mostrar» elige Todos, Activos o Inactivos): código, foto, nombres, dónde fue la última compra, % de ganancia, precio de venta y stock. Lo único que se toca ahí es el interruptor Activo Sí/No; el %, el precio y el stock se cambian en Editar. ✨ Nuevo producto, Editar (y «Es el mismo que…»), Excel, imprimir códigos de barra |
 | 🧾 Compras | Código, factura, proveedor, producto, precio unitario y total. Editar, Excel y 📊 Panel de compras (con gráfico del costo) |
 | 💰 Vender | Uno o varios productos, cliente (buscar o crear) y forma de pago. Descuenta stock por FIFO |
 

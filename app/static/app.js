@@ -380,14 +380,24 @@
     });
   });
 
-  document.querySelectorAll("input[data-mostrar-inactivos]").forEach(function (casilla) {
-    var tabla = document.querySelector(casilla.dataset.mostrarInactivos);
-    var aviso = document.getElementById("sin-inactivos");
-    var aplicar = function () {  // tildada: solo los inactivos; sin tildar: solo los activos
-      tabla.classList.toggle("ver-inactivos", casilla.checked);
-      if (aviso) aviso.hidden = !(casilla.checked && !tabla.querySelector("tbody tr.inactivo"));
+  // Filtro «Mostrar»: Todos, Activos o Inactivos. Se recuerda mientras la pestaña esté abierta.
+  document.querySelectorAll("select[data-filtro-activo]").forEach(function (lista) {
+    var tabla = document.querySelector(lista.dataset.filtroActivo);
+    var aviso = document.getElementById("sin-filtro-activo");
+    try { lista.value = sessionStorage.getItem("filtroActivo") || "todos"; } catch (e) { /* sin memoria */ }
+    if (!lista.value) lista.value = "todos";
+    var aplicar = function () {
+      var ver = lista.value;
+      tabla.classList.toggle("solo-activos", ver === "activos");
+      tabla.classList.toggle("solo-inactivos", ver === "inactivos");
+      try { sessionStorage.setItem("filtroActivo", ver); } catch (e) { /* sin memoria */ }
+      if (!aviso) return;
+      var hay = ver === "todos" || tabla.querySelector(
+        ver === "activos" ? "tbody tr[id]:not(.inactivo)" : "tbody tr.inactivo");
+      aviso.hidden = !!hay;
+      aviso.textContent = hay ? "" : "No hay productos " + ver + ". Elegí «Todos» en Mostrar para ver el resto.";
     };
-    casilla.addEventListener("change", aplicar);
+    lista.addEventListener("change", aplicar);
     aplicar();
   });
 

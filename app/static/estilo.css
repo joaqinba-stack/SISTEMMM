@@ -150,9 +150,10 @@ input[readonly] { background: #f0eee9; }
 .tabla th, .tabla td { padding: 10px; border-bottom: 1px solid #e6e2da; text-align: left; vertical-align: middle; }
 .tabla th { background: #ece8df; font-size: 0.8rem; text-transform: uppercase; letter-spacing: .02em; position: sticky; top: 0; }
 .tabla .num { text-align: right; white-space: nowrap; }
-.tabla tr.inactivo { display: none; }
-.tabla.ver-inactivos tr.inactivo { display: table-row; }
-.tabla.ver-inactivos tbody tr:not(.inactivo) { display: none; }  /* «Ver solo inactivos» */
+/* Filtro «Mostrar»: Todos (por defecto), solo Activos o solo Inactivos */
+.tabla.solo-activos tbody tr.inactivo, .tabla.solo-inactivos tbody tr:not(.inactivo) { display: none; }
+.filtro-activo { display: flex; align-items: center; gap: 10px; margin: 0; }
+.filtro-activo select { width: auto; min-width: 170px; margin: 0; }
 .tabla tr.revisar { background: var(--amarillo-claro); }
 .tabla tr.oculto-busqueda { display: none !important; }
 .tabla tr:target { outline: 3px solid #e2c26b; }
@@ -162,9 +163,17 @@ input[readonly] { background: #f0eee9; }
 .sin-foto { display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center; background: #f0eee9; border-radius: 8px; opacity: .5; }
 .barra-img { height: 56px; max-width: 170px; display: block; }
 .etiqueta { display: inline-block; font-size: 0.75rem; background: #ffe7a3; border-radius: 6px; padding: 1px 6px; }
-.interruptor { min-width: 64px; min-height: 40px; border-radius: 20px; border: 2px solid; font-weight: 700; cursor: pointer; }
-.interruptor.si { background: var(--verde-claro); border-color: var(--verde); color: var(--verde); }
-.interruptor.no { background: var(--rojo-claro); border-color: var(--rojo); color: var(--rojo); }
+/* Interruptor Sí / No: la mitad elegida se pinta (verde = activo, rojo = inactivo) */
+.interruptor { display: inline-flex; padding: 4px; gap: 2px; border-radius: 999px; background: #1f2433;
+  border: 2px solid #1f2433; box-shadow: inset 0 1px 3px rgba(0,0,0,.35); }
+.interruptor.no { border-color: #b8bccb; }
+.interruptor button { min-width: 52px; min-height: 36px; padding: 0 12px; border: 0; border-radius: 999px;
+  background: transparent; color: #9aa3b8; font-weight: 800; font-size: 0.85rem; letter-spacing: .03em;
+  text-transform: uppercase; cursor: pointer; transition: background .2s, color .2s, box-shadow .2s; }
+.interruptor button[type=submit]:hover { color: #fff; }
+.interruptor.si button[value="1"] { background: #16b981; color: #fff; box-shadow: 0 0 12px rgba(22,185,129,.45); cursor: default; }
+.interruptor.no button[value="0"] { background: #f43f5e; color: #fff; box-shadow: 0 0 12px rgba(244,63,94,.45); cursor: default; }
+.interruptor button:focus-visible { outline: 3px solid #9cc3b4; outline-offset: 2px; }
 
 /* ---- Celular: la tabla se convierte en tarjetas ---- */
 @media (max-width: 760px) {
@@ -178,7 +187,6 @@ input[readonly] { background: #f0eee9; }
   .tabla thead { display: none; }
   .tabla, .tabla tbody, .tabla tr, .tabla td { display: block; width: 100%; }
   .tabla tr { background: var(--papel); border: 1px solid var(--borde); border-radius: var(--radio); margin-bottom: 12px; padding: 8px 12px; }
-  .tabla.ver-inactivos tr.inactivo { display: block; }
   .tabla td { border: 0; padding: 5px 0; display: flex; justify-content: space-between; gap: 12px; text-align: right; }
   .tabla td.num { text-align: right; }
   .tabla td[data-titulo]::before { content: attr(data-titulo); font-weight: 700; color: var(--suave); text-align: left; flex: 0 0 auto; }
