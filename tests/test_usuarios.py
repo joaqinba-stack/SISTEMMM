@@ -194,10 +194,22 @@ def test_ventas_por_usuario_y_registro_de_actividad():
     solo_beto = ana.get("/actividad?usuario_id=2").text
     assert "Registró una venta" in solo_beto and "Creó un producto" not in solo_beto
 
-    ana.post("/productos/1/activo")
+    ana.post("/productos/1/activo", data={"activo": "0"})
+    ana.post("/productos/1/activo", data={"activo": "0"})  # ya estaba en No: no cambia ni se anota
     ana.get("/ventas/excel")
     r = ana.get("/actividad")
     assert "Desactivó un producto" in r.text and "Descargó un Excel" in r.text
+    assert r.text.count("Desactivó un producto") == 1
+    with db.conexion() as con:
+        assert inv.obtener_producto(con, 1)["activo"] == 0
+    r = ana.get("/productos")  # se ve igual que los activos, con el interruptor en No
+    assert 'id="p1" class="inactivo' in r.text and 'aria-pressed="true" title="Inactivo' in r.text
+    ana.post("/productos/1/activo", data={"activo": "1"})
+    with db.conexion() as con:
+        assert inv.obtener_producto(con, 1)["activo"] == 1
+    ana.post("/productos/1/activo")  # sin valor lo da vuelta (como antes)
+    with db.conexion() as con:
+        assert inv.obtener_producto(con, 1)["activo"] == 0
 
 
 def test_solo_el_admin_cambia_precios_costos_y_cantidades():

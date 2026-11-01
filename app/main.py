@@ -602,13 +602,16 @@ def producto_unir(request: Request, producto_id: int, destino_id: str = Form("")
 
 
 @app.post("/productos/{producto_id}/activo")
-def producto_activo(request: Request, producto_id: int):
+def producto_activo(request: Request, producto_id: int, activo: str = Form("")):
+    """El interruptor Sí / No de la lista: activo=1 o 0 lo deja así; sin valor, lo da vuelta."""
     with db.conexion() as con:
-        con.execute("UPDATE productos SET activo = 1 - activo WHERE id = ?", (producto_id,))
-        producto = inv.obtener_producto(con, producto_id)
-    if producto:
-        anotar(request, "Activó un producto" if producto["activo"] else "Desactivó un producto",
-               f"{producto['codigo']} {producto['nombre_interno']}")
+        antes = inv.obtener_producto(con, producto_id)
+        if antes:
+            nuevo = int(activo) if activo in ("0", "1") else 1 - antes["activo"]
+            con.execute("UPDATE productos SET activo = ? WHERE id = ?", (nuevo, producto_id))
+    if antes and nuevo != antes["activo"]:
+        anotar(request, "Activó un producto" if nuevo else "Desactivó un producto",
+               f"{antes['codigo']} {antes['nombre_interno']}")
     return ir(f"/productos#p{producto_id}")
 
 

@@ -12,9 +12,15 @@
 
 <div class="filtros no-imprimir">
   <input type="search" placeholder="🔎 Buscar por nombre o código…" data-buscar="#tabla-productos">
-  <label class="casilla"><input type="checkbox" data-mostrar-inactivos="#tabla-productos"> Ver solo inactivos</label>
+  <label class="filtro-activo">Mostrar
+    <select data-filtro-activo="#tabla-productos" aria-label="Qué productos mostrar">
+      <option value="todos">Todos</option>
+      <option value="activos">Activos</option>
+      <option value="inactivos">Inactivos</option>
+    </select>
+  </label>
 </div>
-<p class="ayuda" id="sin-inactivos" hidden>No hay productos inactivos. Destildá «Ver solo inactivos» para ver los activos.</p>
+<p class="ayuda" id="sin-filtro-activo" hidden></p>
 
 
 <p class="suave chica no-imprimir">El stock se actualiza solo cada pocos segundos.</p>
@@ -44,8 +50,12 @@
       <td data-titulo="En stock" class="num stock {{ 'rojo' if p.stock <= 0 }}" data-stock-id="{{ p.id }}">{{ p.stock|cant }}</td>
       <td data-titulo="Activo">
         <form method="post" action="/productos/{{ p.id }}/activo" class="no-imprimir">
-          <button class="interruptor {{ 'si' if p.activo else 'no' }}" type="submit"
-                  title="Tocá para cambiar">{{ 'Sí' if p.activo else 'No' }}</button>
+          <div class="interruptor {{ 'si' if p.activo else 'no' }}" role="group" aria-label="¿{{ p.nombre_interno }} está activo?">
+            <button name="activo" value="1" type="{{ 'button' if p.activo else 'submit' }}"
+                    aria-pressed="{{ 'true' if p.activo else 'false' }}" title="Activo: se vende">Sí</button>
+            <button name="activo" value="0" type="{{ 'submit' if p.activo else 'button' }}"
+                    aria-pressed="{{ 'false' if p.activo else 'true' }}" title="Inactivo: no se vende">No</button>
+          </div>
         </form>
         <span class="solo-imprimir">{{ 'Sí' if p.activo else 'No' }}</span>
       </td>
