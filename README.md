@@ -163,6 +163,8 @@ Para entrar hace falta una cuenta con **usuario y contraseña**. En la pantalla 
 4. Si está todo bien, tocá **✅ Sí, guardar**. Si no, tocá **❌ No, cancelar**.
 4. Si la factura ya se había cargado antes, el bot avisa.
 
+**Facturas largas** (tickets de muchos centímetros): mandalas como **archivo** (📎 → Archivo), no como foto, porque Telegram achica las fotos. El sistema corta la imagen en tramos que se pisan para que la IA lea cada uno en tamaño completo, y si el resumen no entra en un mensaje lo manda en partes, con los botones en la última. Si los renglones no suman el total de la factura, avisa que pueden faltar productos.
+
 Otros comandos: `/stock nombre` muestra el stock de un producto, y `/ayuda` muestra las instrucciones.
 
 ## Productos y proveedores
