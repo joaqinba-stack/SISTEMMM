@@ -100,19 +100,83 @@ def leer_cdc(texto: str) -> dict | None:
     }
 
 
-def _preparar_imagen(contenido: bytes, media_type: str) -> tuple[bytes, str]:
-    """Achica fotos grandes para que el envío sea rápido y barato. Los PDF van tal cual."""
-    if media_type == "application/pdf":
-        return contenido, media_type
+# Facturas largas (tickets de varios centímetros): la IA achica cada imagen a ~1.568 px y ~1,15
+# megapíxeles. Una tira de 95 cm entera quedaría ilegible, así que se corta en tramos que se pisan.
+LARGA = 2.0              # alto / ancho desde el que una foto se considera una tira larga
+LADO_IA = 1568           # lado más largo que la IA lee sin achicar
+PIXELES_IA = 1_150_000   # píxeles por imagen que la IA lee sin achicar
+ANCHO_TRAMO = 1000       # ancho al que se lleva la tira (8 cm de ticket se leen bien)
+SOLAPE = 0.15            # cuánto se pisa un tramo con el siguiente, para no cortar renglones
+MAX_TRAMOS = 20
+
+
+def _abrir(contenido: bytes) -> Image.Image:
+    Image.MAX_IMAGE_PIXELS = 200_000_000  # tickets largos en alta resolución
+    return ImageOps.exif_transpose(Image.open(io.BytesIO(contenido))).convert("RGB")
+
+
+def es_tira_larga(contenido: bytes) -> bool:
+    """Una foto mucho más alta que ancha (por ejemplo un ticket largo)."""
     try:
-        img = ImageOps.exif_transpose(Image.open(io.BytesIO(contenido)))
-        img = img.convert("RGB")
+        ancho, alto = _abrir(contenido).size
+    except Exception:
+        return False
+    return alto > ancho * LARGA
+
+
+def _jpg(img: Image.Image) -> bytes:
+    salida = io.BytesIO()
+    img.save(salida, format="JPEG", quality=88)
+    return salida.getvalue()
+
+
+def _tramos(img: Image.Image) -> list[Image.Image]:
+    """Corta una tira larga en pedazos de arriba hacia abajo que se pisan un poco."""
+    if img.width > ANCHO_TRAMO:
+        img = img.resize((ANCHO_TRAMO, round(img.height * ANCHO_TRAMO / img.width)), Image.LANCZOS)
+    alto_tramo = min(LADO_IA, PIXELES_IA // img.width)
+    paso = int(alto_tramo * (1 - SOLAPE))
+    cantidad = max(1, -(-(img.height - alto_tramo) // paso) + 1)
+    if cantidad > MAX_TRAMOS:  # tira larguísima: se achica un poco para no pasar el tope
+        escala = MAX_TRAMOS / cantidad
+        img = img.resize((max(1, round(img.width * escala)), round(img.height * escala)), Image.LANCZOS)
+        return _tramos_fijos(img, alto_tramo, MAX_TRAMOS)
+    return _tramos_fijos(img, alto_tramo, cantidad)
+
+
+def _tramos_fijos(img: Image.Image, alto_tramo: int, cantidad: int) -> list[Image.Image]:
+    alto_tramo = min(alto_tramo, img.height)
+    if cantidad == 1:
+        return [img.crop((0, 0, img.width, alto_tramo))]
+    paso = (img.height - alto_tramo) / (cantidad - 1)  # repartidos parejo, el último toca el final
+    return [img.crop((0, round(i * paso), img.width, round(i * paso) + alto_tramo)) for i in range(cantidad)]
+
+
+def _preparar_imagenes(contenido: bytes, media_type: str) -> list[tuple[bytes, str]]:
+    """Lo que se manda a la IA. Los PDF van tal cual. Las fotos grandes se achican para que el
+    envío sea rápido y barato; las tiras largas (tickets) se cortan en tramos para que cada
+    tramo se lea en tamaño completo."""
+    if media_type == "application/pdf":
+        return [(contenido, media_type)]
+    try:
+        img = _abrir(contenido)
+        if img.height > img.width * LARGA and img.height > LADO_IA:
+            return [(_jpg(t), "image/jpeg") for t in _tramos(img)]
         img.thumbnail((2000, 2000))
-        salida = io.BytesIO()
-        img.save(salida, format="JPEG", quality=88)
-        return salida.getvalue(), "image/jpeg"
+        return [(_jpg(img), "image/jpeg")]
     except Exception as exc:  # imagen dañada o formato raro
         raise ErrorLectura("No pude abrir la imagen. Probá mandar la foto otra vez.") from exc
+
+
+def _texto_tramos(cantidad: int) -> str:
+    if cantidad == 1:
+        return ""
+    return (f"\n\nLa factura es larga y viene en {cantidad} imágenes: son partes seguidas de la MISMA "
+            "factura, de arriba hacia abajo (la 1 es el principio). Cada parte se pisa un poco con la "
+            "siguiente: un renglón que aparece al final de una parte y otra vez al principio de la "
+            "siguiente es el mismo renglón y va una sola vez. Sacá todos los renglones de todas las "
+            "partes, sin saltear ninguno. El proveedor, el número y la fecha suelen estar en la "
+            "primera parte; el total y el CDC, en la última.")
 
 
 def _bloque_archivo(contenido: bytes, media_type: str) -> dict:
@@ -134,7 +198,15 @@ async def extraer(contenido: bytes, media_type: str = "image/jpeg",
     cantidad, precio_unitario, total, codigo_existente}]}. catalogo: [(código, nombre)] de los productos."""
     if not config.ANTHROPIC_API_KEY:
         raise ErrorLectura("Falta configurar ANTHROPIC_API_KEY para poder leer facturas.")
-    contenido, media_type = _preparar_imagen(contenido, media_type)
+    imagenes = _preparar_imagenes(contenido, media_type)
+    bloques = []
+    for n, (datos_img, tipo) in enumerate(imagenes, 1):
+        if len(imagenes) > 1:
+            bloques.append({"type": "text", "text": f"Parte {n} de {len(imagenes)}:"})
+        bloques.append(_bloque_archivo(datos_img, tipo))
+    texto = INSTRUCCIONES + _texto_tramos(len(imagenes)) + _texto_catalogo(catalogo)
+    if len(imagenes) > 1:
+        log.info("Factura larga: se manda en %d tramos", len(imagenes))
     cliente = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
     try:
         respuesta = await cliente.beta.messages.create(
@@ -143,11 +215,7 @@ async def extraer(contenido: bytes, media_type: str = "image/jpeg",
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
             output_config={"format": {"type": "json_schema", "schema": ESQUEMA}},
-            messages=[{
-                "role": "user",
-                "content": [_bloque_archivo(contenido, media_type),
-                            {"type": "text", "text": INSTRUCCIONES + _texto_catalogo(catalogo)}],
-            }],
+            messages=[{"role": "user", "content": bloques + [{"type": "text", "text": texto}]}],
         )
     except anthropic.AuthenticationError as exc:
         raise ErrorLectura("La clave de Anthropic (ANTHROPIC_API_KEY) no es válida.") from exc

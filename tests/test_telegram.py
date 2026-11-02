@@ -269,3 +269,160 @@ def test_la_ia_recibe_tambien_los_nombres_aprendidos():
         inv.agregar_alias(con, p["id"], "CORT. PABILO INOX X1")
         catalogo = dict(inv.catalogo_para_ia(con))
     assert catalogo[p["codigo"]] == "Cortador de Pabilo (también: CORT. PABILO INOX X1)"
+
+
+# ---------------------------------------------------------------- facturas largas
+
+def _leido_largo(cantidad=60):
+    return {**LEIDO, "items": [
+        {"descripcion": f"Aceite esencial aroma número {n} para velas y jabones 10ml", "cantidad": 3,
+         "precio_unitario": 12000, "total": 36000} for n in range(1, cantidad + 1)]}
+
+
+def _imagen(ancho, alto) -> bytes:
+    salida = io.BytesIO()
+    Image.new("RGB", (ancho, alto), "white").save(salida, format="JPEG")
+    return salida.getvalue()
+
+
+def _mensaje_con(archivo_bytes, como_foto=True):
+    aviso = MagicMock(edit_text=AsyncMock(return_value=MagicMock(delete=AsyncMock())))
+    archivo = MagicMock(download_as_bytearray=AsyncMock(return_value=bytearray(archivo_bytes)))
+    enviados = []
+
+    async def responder(texto, **kwargs):
+        if not enviados and "Recibí la foto" in texto:
+            enviados.append(("aviso", texto, kwargs))
+            return aviso
+        enviados.append(("parte", texto, kwargs))
+        return MagicMock(delete=AsyncMock(), message_id=len(enviados))
+    if como_foto:
+        mensaje = MagicMock(photo=[MagicMock(get_file=AsyncMock(return_value=archivo))])
+    else:
+        mensaje = MagicMock(photo=[], document=MagicMock(mime_type="image/jpeg",
+                                                         get_file=AsyncMock(return_value=archivo)))
+    mensaje.reply_text = responder
+    return mensaje, aviso, enviados
+
+
+def test_partir_respeta_el_largo_y_no_corta_lineas():
+    lineas = [f"{n}. <b>Producto {n}</b>\n     3 × ₲ 12.000" for n in range(200)]
+    partes = bot.partir(lineas, 500)
+    assert len(partes) > 1 and all(len(p) <= 500 for p in partes)
+    assert "\n".join(partes) == "\n".join(lineas)  # no se pierde ni se corta nada
+
+
+def test_resumen_largo_va_en_partes_con_los_botones_al_final(monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_USUARIOS_PERMITIDOS", set())
+    monkeypatch.setattr(factura_ia, "extraer", AsyncMock(return_value=_leido_largo()))
+    mensaje, aviso, enviados = _mensaje_con(_foto_jpg())
+    update = SimpleNamespace(effective_user=SimpleNamespace(id=1), effective_message=mensaje)
+    asyncio.run(bot.recibir_factura(update, None))
+
+    primera = aviso.edit_text.call_args
+    partes = [primera.args[0]] + [t for tipo, t, _ in enviados if tipo == "parte"]
+    assert len(partes) >= 2 and all(len(p) <= 4096 for p in partes)
+    assert partes[0].startswith("📄 <i>Parte 1 de") and "Productos: <b>60</b>" in partes[0]
+    assert "60. 🆕" in partes[-1] and "Total: ₲ 2.160.000" in partes[-1]
+    assert primera.kwargs.get("reply_markup") is None  # los botones van en la última parte
+    teclado = enviados[-1][2]["reply_markup"].inline_keyboard
+    datos = [b.callback_data for fila in teclado for b in fila]
+    clave = datos[0].split(":")[1]
+    # con 60 renglones: un solo botón para corregir, no 60
+    assert f"n:{clave}" in datos and not any(d.startswith("k:") for d in datos)
+    assert sum(len(fila) for fila in teclado) <= bot.MAX_BOTONES
+
+    # corregir por número: se escribe 37 y se pide el producto correcto de ese renglón
+    contexto = SimpleNamespace(user_data={})
+    consulta = MagicMock(data=f"n:{clave}", answer=AsyncMock(), edit_message_text=AsyncMock(),
+                         message=MagicMock(reply_html=AsyncMock(), reply_text=AsyncMock()))
+    asyncio.run(bot.responder_boton(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                    callback_query=consulta), contexto))
+    assert "del 1 al 60" in consulta.message.reply_html.call_args.args[0]
+    texto = MagicMock(text="37", reply_text=AsyncMock(), reply_html=AsyncMock())
+    asyncio.run(bot.texto_libre(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                effective_message=texto), contexto))
+    assert contexto.user_data["corrigiendo"] == (clave, 36)
+    assert "Producto 37" in texto.reply_html.call_args.args[0]
+
+    # marcar el 37 como nuevo vuelve a mandar el resumen entero y borra las partes viejas
+    viejas = list(bot.PENDIENTES[clave]["mensajes"])
+    nuevo = MagicMock(data=f"p:{clave}:36:0", answer=AsyncMock(), edit_message_text=AsyncMock(),
+                      message=MagicMock(message_id=999, reply_text=AsyncMock(
+                          return_value=MagicMock(delete=AsyncMock()))))
+    asyncio.run(bot.responder_boton(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                    callback_query=nuevo), contexto))
+    assert "actualicé el resumen" in nuevo.edit_message_text.call_args.args[0]
+    assert all(m.delete.await_count == 1 for m in viejas)
+    assert nuevo.message.reply_text.await_count == len(partes)
+
+    # guardar: el mensaje final también puede ser largo y va en partes
+    guardar = MagicMock(data=f"g:{clave}", answer=AsyncMock(), edit_message_text=AsyncMock(),
+                        message=MagicMock(reply_text=AsyncMock()))
+    asyncio.run(bot.responder_boton(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                    callback_query=guardar), contexto))
+    assert "Listo" in guardar.edit_message_text.call_args.args[0]
+    todos = [guardar.edit_message_text.call_args.args[0]] + [
+        c.args[0] for c in guardar.message.reply_text.call_args_list]
+    assert all(len(t) <= 4096 for t in todos) and sum(t.count("ahora hay") for t in todos) == 60
+    with db.conexion() as con:
+        assert con.execute("SELECT COUNT(*) FROM lotes").fetchone()[0] == 60
+
+
+def test_si_falla_al_mostrar_avisa_y_no_queda_colgado(monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_USUARIOS_PERMITIDOS", set())
+    monkeypatch.setattr(factura_ia, "extraer", AsyncMock(return_value=LEIDO))
+    monkeypatch.setattr(bot, "teclado_resumen", MagicMock(side_effect=RuntimeError("Message_too_long")))
+    mensaje, aviso, _ = _mensaje_con(_foto_jpg())
+    asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                    effective_message=mensaje), None))
+    assert "Hubo un problema" in aviso.edit_text.call_args.args[0]
+
+
+def test_foto_larga_achicada_por_telegram_avisa_mandar_como_archivo(monkeypatch):
+    monkeypatch.setattr(config, "TELEGRAM_USUARIOS_PERMITIDOS", set())
+    monkeypatch.setattr(factura_ia, "extraer", AsyncMock(return_value=LEIDO))
+    mensaje, aviso, _ = _mensaje_con(_imagen(299, 1280))  # como llegó la factura de 95 cm
+    asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                    effective_message=mensaje), None))
+    assert "Mandala como archivo" in aviso.edit_text.call_args.args[0]
+    # la misma imagen mandada como archivo no avisa
+    mensaje, aviso, _ = _mensaje_con(_imagen(299, 1280), como_foto=False)
+    asyncio.run(bot.recibir_factura(SimpleNamespace(effective_user=SimpleNamespace(id=1),
+                                                    effective_message=mensaje), None))
+    assert "Mandala como archivo" not in aviso.edit_text.call_args.args[0]
+
+
+def test_avisa_si_faltan_productos():
+    compra = bot.preparar_compra({**LEIDO, "total_factura": 900000}, None)
+    assert "falten productos" in compra["avisos"][0] and "faltan ₲ 495.000" in compra["avisos"][0]
+    assert "aviso(s) al final" in bot.texto_resumen(compra)
+
+
+def test_factura_larga_se_corta_en_tramos_que_se_pisan():
+    tramos = factura_ia._preparar_imagenes(_imagen(974, 4160), "image/jpeg")
+    assert len(tramos) == 4
+    medidas = [Image.open(io.BytesIO(t)).size for t, _ in tramos]
+    assert all(max(m) <= factura_ia.LADO_IA and m[0] * m[1] <= factura_ia.PIXELES_IA for m in medidas)
+    assert sum(alto for _, alto in medidas) > 4160  # se pisan: no se pierde ningún renglón
+    # una tira muy ancha se lleva a 1.000 px de ancho; una foto normal va entera
+    ancha = factura_ia._preparar_imagenes(_imagen(3000, 30000), "image/jpeg")
+    assert Image.open(io.BytesIO(ancha[0][0])).width <= 1000
+    assert len(factura_ia._preparar_imagenes(_imagen(1500, 2000), "image/jpeg")) == 1
+    assert len(factura_ia._preparar_imagenes(_imagen(299, 1280), "image/jpeg")) == 1
+    assert len(factura_ia._preparar_imagenes(_imagen(500, 60000), "image/jpeg")) <= factura_ia.MAX_TRAMOS
+
+
+def test_extraer_factura_larga_manda_los_tramos_en_orden(monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "clave-prueba")
+    respuesta = SimpleNamespace(stop_reason="end_turn", content=[
+        SimpleNamespace(type="text", text=json.dumps(LEIDO))])
+    crear = AsyncMock(return_value=respuesta)
+    cliente = MagicMock()
+    cliente.beta.messages.create = crear
+    monkeypatch.setattr(factura_ia.anthropic, "AsyncAnthropic", MagicMock(return_value=cliente))
+    asyncio.run(factura_ia.extraer(_imagen(974, 4160), "image/jpeg"))
+    contenido = crear.call_args.kwargs["messages"][0]["content"]
+    assert [b["type"] for b in contenido[:4]] == ["text", "image", "text", "image"]
+    assert contenido[0]["text"] == "Parte 1 de 4:" and contenido[6]["text"] == "Parte 4 de 4:"
+    assert "viene en 4 imágenes" in contenido[-1]["text"]

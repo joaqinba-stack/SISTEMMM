@@ -25,7 +25,9 @@ AYUDA = (
     "Yo la leo y te muestro lo que entendí. Si está bien, tocás <b>✅ Sí, guardar</b>.\n\n"
     "🔎 <b>Para ver el stock:</b> escribí <code>/stock</code> y el nombre, por ejemplo "
     "<code>/stock molde vela</code>\n\n"
-    "💡 Consejo: sacá la foto de cerca, con buena luz y la factura derechita."
+    "💡 Consejo: sacá la foto de cerca, con buena luz y la factura derechita.\n"
+    "📏 Si la factura es <b>muy larga</b>, mandala como <b>archivo</b> (📎 → Archivo) y no como "
+    "foto: así Telegram no la achica y se leen todos los productos."
 )
 
 
@@ -33,6 +35,29 @@ AYUDA = (
 
 TOLERANCIA_TOTAL = 100  # guaraníes de diferencia que se aceptan por redondeos
 MAX_BOTONES = 100       # tope de Telegram para un teclado
+MAX_TEXTO = 3800        # Telegram no acepta mensajes de más de 4096 letras: los largos van en partes
+MAX_CORREGIR = 15       # con más renglones, un solo botón «Corregir un producto» en vez de uno por renglón
+MAX_SUGERENCIAS = 12    # botones «🔁 n es: …» como máximo, para que el teclado no sea una pared
+
+AVISO_FOTO_ACHICADA = ("Esta factura es larga y Telegram achicó la foto, así que puede que no se lean "
+                       "todos los productos. Mandala como archivo (📎 → Archivo) para que llegue "
+                       "con buena calidad.")
+
+
+def partir(lineas: list[str], limite: int = MAX_TEXTO) -> list[str]:
+    """Junta las líneas en mensajes de hasta `limite` letras, sin cortar ninguna línea por la mitad
+    (cada línea tiene sus etiquetas HTML completas)."""
+    partes, actual = [], ""
+    for linea in lineas:
+        linea = linea[:limite]
+        if actual and len(actual) + 1 + len(linea) > limite:
+            partes.append(actual)
+            actual = linea
+        else:
+            actual = f"{actual}\n{linea}" if actual else linea
+    if actual or not partes:
+        partes.append(actual)
+    return partes
 
 
 def verificar(datos: dict) -> tuple[dict, list[str]]:
@@ -47,15 +72,21 @@ def verificar(datos: dict) -> tuple[dict, list[str]]:
         datos = {**datos, "nro_factura": cdc["nro_factura"], "fecha": cdc["fecha"]}
     suma = sum(item["total"] for item in datos["items"])
     total = datos.get("total_factura") or 0
-    if total and abs(suma - total) > TOLERANCIA_TOTAL:
+    if total and suma < total - TOLERANCIA_TOTAL:
+        avisos.append(f"Puede que falten productos: los renglones suman {inv.guaranies(suma)} pero el "
+                      f"total de la factura es {inv.guaranies(total)} (faltan {inv.guaranies(total - suma)}). "
+                      "Revisalo antes de guardar.")
+    elif total and suma > total + TOLERANCIA_TOTAL:
         avisos.append(f"Los renglones suman {inv.guaranies(suma)} pero el total de la factura es "
-                      f"{inv.guaranies(total)}. Revisá que no falte ni sobre ningún producto.")
+                      f"{inv.guaranies(total)} (sobran {inv.guaranies(suma - total)}). "
+                      "Revisá que no haya productos repetidos o mal leídos.")
     return {**datos, "cdc_ok": bool(cdc)}, avisos
 
 
-def preparar_compra(datos: dict, foto: str | None) -> dict:
+def preparar_compra(datos: dict, foto: str | None, avisos_extra: list[str] | None = None) -> dict:
     """Busca cada renglón de la factura entre los productos que ya existen."""
     datos, avisos = verificar(datos)
+    avisos = list(avisos_extra or []) + avisos
     with db.conexion() as con:
         clave = inv.normalizar(datos["proveedor"])
         fila = con.execute("SELECT id FROM proveedores WHERE clave = ?", (clave,)).fetchone()
@@ -83,32 +114,34 @@ def preparar_compra(datos: dict, foto: str | None) -> dict:
     return {**datos, "items": items, "foto": foto, "repetida": repetida, "avisos": avisos}
 
 
-def texto_resumen(compra: dict) -> str:
+def lineas_resumen(compra: dict) -> list[str]:
     e = html.escape
     lineas = ["🧾 <b>Esto es lo que leí de la factura:</b>", ""]
     lineas.append(f"🏪 Proveedor: <b>{e(compra['proveedor'] or 'no se lee')}</b>")
     lineas.append(f"🔢 Factura N°: <b>{e(compra['nro_factura'] or 'no se lee')}</b>")
     lineas.append(f"📅 Fecha: <b>{inv.fecha_txt(inv.leer_fecha(compra['fecha']))}</b>")
+    lineas.append(f"📦 Productos: <b>{len(compra['items'])}</b>")
     if compra.get("cdc_ok"):
         lineas.append("🔐 Número y fecha confirmados con el CDC")
+    if compra.get("avisos"):
+        lineas.append(f"⚠️ <b>Hay {len(compra['avisos'])} aviso(s) al final: leelos antes de guardar.</b>")
     lineas.append("")
     total = 0.0
     hay_sugerencias = False
     for n, item in enumerate(compra["items"], 1):
         marca = "✔️" if item["producto_id"] else "🆕"
-        lineas.append(
-            f"{n}. {marca} <b>{e(item['producto_nombre'])}</b>\n"
-            f"     {inv.cantidad_txt(item['cantidad'])} × {inv.guaranies(item['precio_unitario'])}"
-            f" = {inv.guaranies(item['total'])}"
-        )
+        renglon = (f"{n}. {marca} <b>{e(item['producto_nombre'])}</b>\n"
+                   f"     {inv.cantidad_txt(item['cantidad'])} × {inv.guaranies(item['precio_unitario'])}"
+                   f" = {inv.guaranies(item['total'])}")
         if item["producto_id"]:
             # Con el texto de la factura al lado se nota si se eligió el producto equivocado.
             if inv.normalizar(item["descripcion"]) != inv.normalizar(item["producto_nombre"]):
-                lineas.append(f"     📄 En la factura: «{e(item['descripcion'])}»")
+                renglon += f"\n     📄 En la factura: «{e(item['descripcion'])}»"
         elif item.get("sugerencias"):
             hay_sugerencias = True
             nombres = " · ".join(e(s["nombre"]) for s in item["sugerencias"])
-            lineas.append(f"     🔎 Se parece a: <i>{nombres}</i>")
+            renglon += f"\n     🔎 Se parece a: <i>{nombres}</i>"
+        lineas.append(renglon)  # un renglón entero va siempre en el mismo mensaje
         total += item["total"]
     lineas.append("")
     lineas.append(f"💰 <b>Total: {inv.guaranies(total)}</b>")
@@ -123,8 +156,24 @@ def texto_resumen(compra: dict) -> str:
         lineas.append("")
         lineas.append("⚠️ <b>Atención: esta factura ya fue cargada antes.</b>")
     lineas.append("")
-    lineas.append("¿Guardo esta compra? Si algún producto está mal, tocá <b>✏️ Corregir</b> con su número.")
-    return "\n".join(lineas)
+    if len(compra["items"]) > MAX_CORREGIR:
+        lineas.append("¿Guardo esta compra? Si algún producto está mal, tocá <b>✏️ Corregir un producto</b> "
+                      "y escribí su número.")
+    else:
+        lineas.append("¿Guardo esta compra? Si algún producto está mal, tocá <b>✏️ Corregir</b> con su número.")
+    return lineas
+
+
+def texto_resumen(compra: dict) -> str:
+    return "\n".join(lineas_resumen(compra))
+
+
+def partes_resumen(compra: dict) -> list[str]:
+    """El resumen en uno o varios mensajes (Telegram no acepta mensajes muy largos)."""
+    partes = partir(lineas_resumen(compra))
+    if len(partes) > 1:
+        partes = [f"📄 <i>Parte {i} de {len(partes)}</i>\n{p}" for i, p in enumerate(partes, 1)]
+    return partes
 
 
 def guardar_compra(compra: dict) -> tuple[str, int]:
@@ -196,9 +245,12 @@ def corregir_renglon(compra: dict, n: int, producto_id: int | None) -> dict:
 def teclado_resumen(clave: str, compra: dict) -> InlineKeyboardMarkup:
     filas = [[InlineKeyboardButton("✅ Sí, guardar", callback_data=f"g:{clave}"),
               InlineKeyboardButton("❌ No, cancelar", callback_data=f"c:{clave}")]]
-    correcciones = [InlineKeyboardButton(f"✏️ Corregir {n}", callback_data=f"k:{clave}:{n - 1}")
-                    for n in range(1, len(compra["items"]) + 1)]
-    libres = MAX_BOTONES - 2 - len(correcciones)
+    if len(compra["items"]) > MAX_CORREGIR:  # factura larga: se escribe el número del renglón
+        correcciones = [InlineKeyboardButton("✏️ Corregir un producto", callback_data=f"n:{clave}")]
+    else:
+        correcciones = [InlineKeyboardButton(f"✏️ Corregir {n}", callback_data=f"k:{clave}:{n - 1}")
+                        for n in range(1, len(compra["items"]) + 1)]
+    libres = min(MAX_BOTONES - 2 - len(correcciones), MAX_SUGERENCIAS)
     for n, item in enumerate(compra["items"]):
         if item["producto_id"] is not None:
             continue
@@ -225,6 +277,47 @@ def texto_stock(busqueda: str) -> str:
     if len(filas) > 25:
         lineas.append(f"\n… y {len(filas) - 25} más. Escribí un nombre más exacto.")
     return "\n".join(lineas)
+
+
+async def mostrar_resumen(clave: str, compra: dict, editar, enviar, boton_id=None) -> None:
+    """Muestra el resumen de la compra. editar: corrutina que cambia el mensaje desde donde se
+    viene (el «Estoy leyendo…» o el del botón tocado); enviar: corrutina que manda uno nuevo.
+    boton_id: el mensaje del botón tocado, cuando se muestra de nuevo después de corregir.
+    Si entra en un mensaje, es ese y lleva los botones. Si es largo va en partes, con los botones
+    en la última; al mostrarlo de nuevo se borran las partes viejas y se manda entero otra vez."""
+    partes = partes_resumen(compra)
+    teclado = teclado_resumen(clave, compra)
+    for mensaje in compra.get("mensajes", []):
+        if getattr(mensaje, "message_id", None) == boton_id:
+            continue  # ese se cambia, no se borra
+        try:
+            await mensaje.delete()
+        except Exception:  # ya borrado o muy viejo: no importa
+            pass
+    compra["mensajes"] = []
+    if len(partes) == 1:
+        await editar(partes[0], parse_mode="HTML", reply_markup=teclado)
+        return
+    if boton_id is not None:  # el mensaje del botón queda como nota y el resumen va entero abajo
+        await editar("✅ Listo, actualicé el resumen. Lo tenés acá abajo 👇")
+        pendientes = partes
+    else:
+        compra["mensajes"].append(await editar(partes[0], parse_mode="HTML"))
+        pendientes = partes[1:]
+    for i, parte in enumerate(pendientes):
+        ultima = i == len(pendientes) - 1
+        compra["mensajes"].append(
+            await enviar(parte, parse_mode="HTML", reply_markup=teclado if ultima else None))
+
+
+async def responder_largo(texto: str, editar, enviar, teclado=None) -> None:
+    """Un mensaje que puede pasar el largo de Telegram: el primer pedazo cambia el mensaje
+    actual y el resto se manda aparte; los botones van en el último."""
+    partes = partir(texto.split("\n"))
+    for i, parte in enumerate(partes):
+        ultima = i == len(partes) - 1
+        accion = editar if i == 0 else enviar
+        await accion(parte, parse_mode="HTML", reply_markup=teclado if ultima else None)
 
 
 def _limpiar_vencidos() -> None:
@@ -293,11 +386,26 @@ async def recibir_factura(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         archivo = await doc.get_file()
 
     aviso = await mensaje.reply_text("📷 Recibí la foto. Estoy leyendo la factura, esperá un ratito…")
+    try:
+        await _leer_y_mostrar(mensaje, archivo, media_type, extension, aviso)
+    except Exception:  # que nunca quede en «Estoy leyendo…» sin respuesta
+        log.exception("Error leyendo una factura de Telegram")
+        try:
+            await aviso.edit_text(
+                "😕 Hubo un problema y no pude mostrarte lo que leí. No guardé nada.\n"
+                "Probá mandar la factura de nuevo. Si es muy larga, mandala como archivo (📎 → Archivo).")
+        except Exception:
+            log.exception("Tampoco se pudo avisar del error")
+
+
+async def _leer_y_mostrar(mensaje, archivo, media_type: str, extension: str, aviso) -> None:
     contenido = bytes(await archivo.download_as_bytearray())
     nombre_foto = f"factura-{uuid.uuid4().hex[:12]}{extension}"
     carpeta = config.ARCHIVOS_DIR / "facturas"
     carpeta.mkdir(parents=True, exist_ok=True)
     (carpeta / nombre_foto).write_bytes(contenido)
+    # Una foto (no un archivo) de una factura larga llega achicada por Telegram.
+    achicada = bool(mensaje.photo) and factura_ia.es_tira_larga(contenido)
 
     with db.conexion() as con:
         catalogo = inv.catalogo_para_ia(con)
@@ -307,16 +415,17 @@ async def recibir_factura(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await aviso.edit_text(f"😕 {exc}")
         return
     if not datos["es_factura"] or not datos["items"]:
-        await aviso.edit_text(
-            "😕 No encontré productos en esa foto.\n"
-            "Probá sacar la foto más de cerca, con buena luz y que se vea toda la factura.")
+        consejo = ("Esta factura es larga y Telegram achicó la foto: mandala como archivo (📎 → Archivo)."
+                   if achicada else
+                   "Probá sacar la foto más de cerca, con buena luz y que se vea toda la factura.")
+        await aviso.edit_text(f"😕 No encontré productos en esa foto.\n{consejo}")
         return
 
-    compra = preparar_compra(datos, f"facturas/{nombre_foto}")
+    compra = preparar_compra(datos, f"facturas/{nombre_foto}", [AVISO_FOTO_ACHICADA] if achicada else None)
     _limpiar_vencidos()
     clave = secrets.token_hex(4)
     PENDIENTES[clave] = {**compra, "vence": time.time() + VENCE_SEGUNDOS}
-    await aviso.edit_text(texto_resumen(compra), parse_mode="HTML", reply_markup=teclado_resumen(clave, compra))
+    await mostrar_resumen(clave, PENDIENTES[clave], aviso.edit_text, mensaje.reply_text)
 
 
 async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -340,20 +449,20 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     clave = partes[1] if len(partes) > 1 else ""
-    if accion in ("k", "p"):
+    if accion in ("k", "p", "n"):
         compra = PENDIENTES.get(clave)
         if compra is None:
             await consulta.edit_message_text("⌛ Esta factura ya fue guardada, cancelada o pasó mucho tiempo.")
             return
+        if accion == "n":  # factura larga: se escribe el número del renglón a corregir
+            context.user_data.pop("corrigiendo", None)
+            context.user_data["eligiendo"] = clave
+            await consulta.message.reply_html(
+                f"✏️ Escribí el <b>número</b> del producto que querés corregir (del 1 al {len(compra['items'])}).")
+            return
         n = int(partes[2])
         if accion == "k":  # pedir el nombre del producto correcto
-            context.user_data["corrigiendo"] = (clave, n)
-            item = compra["items"][n]
-            await consulta.message.reply_html(
-                f"✏️ <b>Producto {n + 1}:</b> «{html.escape(item['descripcion'])}»\n\n"
-                "Escribí parte del nombre del producto correcto (por ejemplo: <i>molde vela</i>).",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                    "🆕 Es un producto nuevo", callback_data=f"p:{clave}:{n}:0")]]))
+            await _pedir_producto_correcto(consulta.message, context, clave, compra, n)
             return
         context.user_data.pop("corrigiendo", None)
         try:
@@ -361,8 +470,8 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         except inv.ErrorNegocio as exc:
             await consulta.edit_message_text(f"😕 {exc}")
             return
-        await consulta.edit_message_text(texto_resumen(compra), parse_mode="HTML",
-                                         reply_markup=teclado_resumen(clave, compra))
+        await mostrar_resumen(clave, compra, consulta.edit_message_text, consulta.message.reply_text,
+                              boton_id=getattr(consulta.message, "message_id", None))
         return
 
     compra = PENDIENTES.pop(clave, None)
@@ -391,12 +500,33 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         texto = "😕 Hubo un problema y no se guardó. Probá de nuevo más tarde."
     if config.URL_PUBLICA:
         texto += f"\n\n🔗 Ver compras: {config.URL_PUBLICA}/compras"
-    await consulta.edit_message_text(texto, parse_mode="HTML", reply_markup=teclado)
+    await responder_largo(texto, consulta.edit_message_text, consulta.message.reply_text, teclado)
+
+
+async def _pedir_producto_correcto(mensaje, context, clave: str, compra: dict, n: int) -> None:
+    context.user_data["corrigiendo"] = (clave, n)
+    item = compra["items"][n]
+    await mensaje.reply_html(
+        f"✏️ <b>Producto {n + 1}:</b> «{html.escape(item['descripcion'])}»\n\n"
+        "Escribí parte del nombre del producto correcto (por ejemplo: <i>molde vela</i>).",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+            "🆕 Es un producto nuevo", callback_data=f"p:{clave}:{n}:0")]]))
 
 
 async def texto_libre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _permitido(update):
         return await _rechazar(update)
+    eligiendo = context.user_data.pop("eligiendo", None) if context.user_data is not None else None
+    if eligiendo and eligiendo in PENDIENTES:
+        compra = PENDIENTES[eligiendo]
+        texto = (update.effective_message.text or "").strip()
+        if texto.isdigit() and 1 <= int(texto) <= len(compra["items"]):
+            return await _pedir_producto_correcto(update.effective_message, context, eligiendo,
+                                                  compra, int(texto) - 1)
+        if texto.isdigit():  # número fuera de la lista: sigue esperando uno válido
+            context.user_data["eligiendo"] = eligiendo
+            return await update.effective_message.reply_text(
+                f"Ese número no está. Escribí un número del 1 al {len(compra['items'])}.")
     corrigiendo = context.user_data.get("corrigiendo") if context.user_data is not None else None
     if corrigiendo and corrigiendo[0] in PENDIENTES:
         clave, n = corrigiendo
